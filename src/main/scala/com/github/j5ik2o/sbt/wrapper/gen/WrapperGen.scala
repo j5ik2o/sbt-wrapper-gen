@@ -4,12 +4,16 @@ import java.io.FileWriter
 
 import com.github.j5ik2o.sbt.wrapper.gen.model.TypeDesc
 import com.github.j5ik2o.sbt.wrapper.gen.util.Loan._
+import com.github.javaparser.{JavaParser, ParserConfiguration}
 import sbt.complete.Parser
-import sbt.{ File, _ }
+import sbt.{File, _}
 
-import scala.util.{ Success, Try }
+import scala.util.{Success, Try}
 
 trait WrapperGen {
+
+
+
   import complete.DefaultParsers._
 
   private val oneStringParser: Parser[String] = token(Space ~> StringBasic, "table name")
@@ -18,10 +22,13 @@ trait WrapperGen {
 
   case class GeneratorContext(logger: Logger,
                               classNameFilter: String => Boolean,
-                              typeNameMapper: String => String,
+                              typeNameMapper: String => Seq[String],
                               templateDirectory: File,
                               templateNameMapper: String => String,
-                              outputDirectoryMapper: String => File)
+                              outputDirectoryMapper: String => File,
+                              parserConfigurationOpt: Option[ParserConfiguration]) {
+    val javaParser = parserConfigurationOpt.map(pc => new JavaParser(pc)).getOrElse(new JavaParser())
+  }
 
   /**
     * テーブル名を指定してファイルを生成する。
@@ -30,17 +37,17 @@ trait WrapperGen {
     * @param ctx       [[GeneratorContext]]
     * @return 生成されたSeq[File]
     */
-  private[gen] def generateOne(tableName: String)(implicit ctx: GeneratorContext): Try[Seq[File]] = {
+  private[gen] def generateOne(className: String)(implicit ctx: GeneratorContext): Try[Seq[File]] = {
     implicit val logger = ctx.logger
     logger.debug(s"generateOne: start")
     val result = for {
       cfg        <- createTemplateConfiguration(ctx.templateDirectory)
-      tableDescs <- getTableDescs(ctx.connection, ctx.schemaName)
-      files <- tableDescs
-        .filter { tableDesc =>
-          ctx.tableNameFilter(tableDesc.tableName)
+      classDescs <- getClassDescs(ctx.javaParser)
+      files <- classDescs
+        .filter { classDesc =>
+          ctx.classNameFilter(classDesc.name)
         }
-        .find(_.tableName == tableName)
+        .find(_.name == className)
         .map { tableDesc =>
           generateFiles(cfg, tableDesc)
         }
@@ -50,19 +57,11 @@ trait WrapperGen {
     result
   }
 
-  private[gen] def getClassDescs()(implicit logger: Logger): Try[Seq[TypeDesc]] = {
-    logger.debug(s"getTableDescs($conn, $schemaName): start")
-    val result = getTables(conn, schemaName).flatMap { tables =>
-      tables.foldLeft(Try(Seq.empty[TableDesc])) { (result, tableName) =>
-        for {
-          r               <- result
-          primaryKeyDescs <- getPrimaryKeyDescs(conn, schemaName, tableName)
-          columnDescs     <- getColumnDescs(conn, schemaName, tableName)
-        } yield r :+ TableDesc(tableName, primaryKeyDescs, columnDescs)
-      }
-    }
-    logger.debug(s"getTableDescs: finished = $result")
-    result
+  private[gen] def getClassDescs(javaParser: JavaParser)(implicit logger: Logger): Try[Seq[TypeDesc]] = {
+    logger.debug(s"getTableDescs(): start")
+
+    logger.debug(s"getTableDescs: finished = ")
+    ???
   }
 
   private[gen] def createFile(outputDirectory: File, className: String)(
@@ -90,18 +89,37 @@ trait WrapperGen {
     cfg
   }
 
+  private[generator] def generateFiles(cfg: freemarker.template.Configuration,
+                                       typeDesc: TypeDesc)(implicit ctx: GeneratorContext): Try[Seq[File]] = {
+    implicit val logger = ctx.logger
+    logger.debug(s"generateFiles($cfg, $typeDesc): start")
+    val result = ctx
+      .typeNameMapper(typeDesc.name)
+      .foldLeft(Try(Seq.empty[File])) { (result, className) =>
+        val outputTargetDirectory = ctx.outputDirectoryMapper(className)
+        for {
+          r <- result
+          file <- generateFile(cfg, typeDesc, className, outputTargetDirectory)
+        } yield {
+          r :+ file
+        }
+      }
+    logger.debug(s"generateFiles: finished = $result")
+    result
+  }
+
   private[gen] def generateFile(
       cfg: freemarker.template.Configuration,
-      typeDesc: TypeDesc,
+      typeDesc: TypeDesc, className: String,
       outputDirectory: File
   )(implicit ctx: GeneratorContext): Try[File] = {
     implicit val logger = ctx.logger
-    logger.debug(s"generateFile($cfg, $typeDesc, $outputDirectory): start")
-    val templateName = ctx.templateNameMapper(typeDesc.name)
+    logger.debug(s"generateFile($cfg, $typeDesc, $className, $outputDirectory): start")
+    val templateName = ctx.templateNameMapper(className)
     val template     = cfg.getTemplate(templateName)
-    val file         = createFile(outputDirectory, typeDesc.name)
+    val file         = createFile(outputDirectory, className)
     ctx.logger.info(
-      s"typeDesc.name = ${typeDesc.name}, templateName = $templateName, generate file = $file"
+      s"typeDesc = $typeDesc, className = $className, templateName = $templateName, generate file = $file"
     )
 
     if (!outputDirectory.exists())
