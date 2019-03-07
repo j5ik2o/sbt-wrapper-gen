@@ -63,7 +63,7 @@ val sbtCrossVersion = sbtVersion in pluginCrossBuild
 
 scalaVersion := (CrossVersion partialVersion sbtCrossVersion.value match {
   case Some((0, 13)) => "2.10.6"
-  case Some((1, _)) => "2.12.4"
+  case Some((1, _)) => "2.12.8"
   case _ => sys error s"Unhandled sbt version ${sbtCrossVersion.value}"
 })
 
@@ -78,7 +78,6 @@ resolvers ++= Seq(
 
 
 libraryDependencies ++= Seq(
-  "com.spotify" % "docker-client" % "2.7.7",
   "ch.qos.logback" % "logback-classic" % "1.1.3",
   "org.slf4j" % "slf4j-api" % "1.7.12",
   "org.freemarker" % "freemarker" % "2.3.22",
