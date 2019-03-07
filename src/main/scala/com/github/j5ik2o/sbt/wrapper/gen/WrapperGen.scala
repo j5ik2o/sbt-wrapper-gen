@@ -10,9 +10,10 @@ import com.github.javaparser.ast.body._
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter
 import com.github.javaparser.ast.{ Modifier, PackageDeclaration }
 import com.github.javaparser.{ JavaParser, ParserConfiguration }
+import org.seasar.util.lang.{ ClassLoaderUtil, ClassUtil }
 import sbt.Keys._
 import sbt.complete.Parser
-import sbt.{ File, _ }
+import sbt.{ Def, File, _ }
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
@@ -32,11 +33,11 @@ object WrapperGen {
     case ("Array", Seq(valueType)) =>
       ArrayTypeDesc(valueType)
     case ("List", Seq(valueType)) =>
-      SeqTypeDesc(valueType)
+      JavaListTypeDesc(valueType)
     case ("Map", Seq(keyType, valueType)) =>
-      MapTypeDesc(keyType, valueType)
+      JavaMapTypeDesc(keyType, valueType)
     case ("CompletableFuture", Seq(paramType)) =>
-      FutureDesc(paramType)
+      CompletableFutureDesc(paramType)
     case ("Integer", _) =>
       PrimitiveTypeDesc(PrimitiveType.INT)
     case ("Log", _) =>
@@ -210,10 +211,82 @@ trait WrapperGen {
     _generateOne(ctx, className).get
   }
 
+  def generateManyTask: Def.Initialize[InputTask[Seq[File]]] = Def.inputTask {
+    val classNames      = manyStringParser.parsed
+    implicit val logger = streams.value.log
+    logger.info("sbt-wrapper-gen: generateOne task")
+
+    val classLoader =
+      if ((enableManagedClassPath in scalaWrapperGen).value)
+        ClasspathUtilities.toLoader(
+          (managedClasspath in Compile).value.map(_.data),
+          ClasspathUtilities.xsbtiLoader
+        )
+      else
+        ClasspathUtilities.xsbtiLoader
+
+    val classFilterValue           = (typeDescFilter in scalaWrapperGen).value
+    val typeDescMapperValue        = (typeDescMapper in scalaWrapperGen).value
+    val templateDirectoryValue     = (templateDirectory in scalaWrapperGen).value
+    val templateNameMapperValue    = (templateNameMapper in scalaWrapperGen).value
+    val inputDirectoryValue        = (inputDirectory in scalaWrapperGen).value
+    val outputDirectoryMapperValue = (outputDirectoryMapper in scalaWrapperGen).value
+    val parserConfigurationValue   = (javaParserConfiguration in scalaWrapperGen).value
+
+    val context: GeneratorContext = GeneratorContext(
+      logger = streams.value.log,
+      classFilter = classFilterValue,
+      typeDescMapper = typeDescMapperValue,
+      templateDirectory = templateDirectoryValue,
+      templateNameMapper = templateNameMapperValue,
+      inputDirectory = inputDirectoryValue,
+      outputDirectoryMapper = outputDirectoryMapperValue,
+      parserConfigurationOpt = parserConfigurationValue
+    )
+    _generateMany(context, classNames).get
+  }
+
+  def generateAllTask: Def.Initialize[Task[Seq[File]]] = Def.taskDyn {
+    val managedClasspathValue = (managedClasspath in Compile).value
+    Def.task {
+      implicit val logger = streams.value.log
+      logger.info("sbt-wrapper-gen: generateAll task")
+
+      val classLoader =
+        if ((enableManagedClassPath in scalaWrapperGen).value)
+          ClasspathUtilities.toLoader(
+            managedClasspathValue.map(_.data),
+            ClasspathUtilities.xsbtiLoader
+          )
+        else
+          ClasspathUtilities.xsbtiLoader
+
+      val classFilterValue           = (typeDescFilter in scalaWrapperGen).value
+      val typeDescMapperValue        = (typeDescMapper in scalaWrapperGen).value
+      val templateDirectoryValue     = (templateDirectory in scalaWrapperGen).value
+      val templateNameMapperValue    = (templateNameMapper in scalaWrapperGen).value
+      val inputDirectoryValue        = (inputDirectory in scalaWrapperGen).value
+      val outputDirectoryMapperValue = (outputDirectoryMapper in scalaWrapperGen).value
+      val parserConfigurationValue   = (javaParserConfiguration in scalaWrapperGen).value
+
+      val context: GeneratorContext = GeneratorContext(
+        logger = streams.value.log,
+        classFilter = classFilterValue,
+        typeDescMapper = typeDescMapperValue,
+        templateDirectory = templateDirectoryValue,
+        templateNameMapper = templateNameMapperValue,
+        inputDirectory = inputDirectoryValue,
+        outputDirectoryMapper = outputDirectoryMapperValue,
+        parserConfigurationOpt = parserConfigurationValue
+      )
+      _generateAll(context).get
+    }
+  }
+
   private[gen] def _generateOne(context: GeneratorContext, className: String): Try[Seq[File]] = {
     implicit val logger = context.logger
     logger.debug(s"generateOne: start")
-    val result = for {
+    val result: Try[Seq[File]] = for {
       cfg        <- createTemplateConfiguration(context.templateDirectory)
       classDescs <- getClassDescs(context)
       files <- classDescs
@@ -227,6 +300,51 @@ trait WrapperGen {
         .get
     } yield files
     logger.debug(s"generateOne: finished = $result")
+    result
+  }
+
+  private[gen] def _generateMany(context: GeneratorContext, classNames: Seq[String]): Try[Seq[File]] = {
+    implicit val logger = context.logger
+    logger.debug(s"generateMany($classNames): start")
+    val result = for {
+      cfg        <- createTemplateConfiguration(context.templateDirectory)
+      classDescs <- getClassDescs(context)
+      files <- classDescs
+        .filter { classDesc =>
+          context.classFilter(classDesc)
+        }
+        .filter { classDesc =>
+          classNames.contains(classDesc.simpleTypeName)
+        }
+        .foldLeft(Try(Seq.empty[File])) { (result, classDesc) =>
+          for {
+            r1 <- result
+            r2 <- generateFiles(context, cfg, classDesc)
+          } yield r1 ++ r2
+        }
+    } yield files
+    logger.debug(s"generateMany: finished = $result")
+    result
+  }
+
+  private[gen] def _generateAll(context: GeneratorContext): Try[Seq[File]] = {
+    implicit val logger = context.logger
+    logger.debug(s"generateAll: start")
+    val result = for {
+      cfg        <- createTemplateConfiguration(context.templateDirectory)
+      classDescs <- getClassDescs(context)
+      files <- classDescs
+        .filter { classDesc =>
+          context.classFilter(classDesc)
+        }
+        .foldLeft(Try(Seq.empty[File])) { (result, classDesc) =>
+          for {
+            r1 <- result
+            r2 <- generateFiles(context, cfg, classDesc)
+          } yield r1 ++ r2
+        }
+    } yield files
+    logger.debug(s"generateAll: finished = $result")
     result
   }
 

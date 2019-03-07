@@ -28,6 +28,8 @@ object SbtWrapperGenPlugin extends AutoPlugin with WrapperGen {
       true
     },
     typeDescMapper in scalaWrapperGen := WrapperGen.defaultTypeDescMapper,
-    generateOne in scalaWrapperGen := generateOneTask.evaluated
+    generateOne in scalaWrapperGen := generateOneTask.evaluated,
+    generateMany in scalaWrapperGen := generateManyTask.evaluated,
+    generateAll in scalaWrapperGen := generateAllTask.value
   )
 }

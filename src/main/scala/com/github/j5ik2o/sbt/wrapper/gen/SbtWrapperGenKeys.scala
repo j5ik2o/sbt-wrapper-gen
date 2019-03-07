@@ -16,7 +16,9 @@ trait SbtWrapperGenKeys {
   val outputDirectoryMapper   = settingKey[TypeDesc => File]("")
   val javaParserConfiguration = settingKey[Option[ParserConfiguration]]("")
 
-  val generateOne = inputKey[Seq[File]]("generate-one")
+  val generateOne  = inputKey[Seq[File]]("generate-one")
+  val generateMany = inputKey[Seq[File]]("generate-many")
+  val generateAll  = inputKey[Seq[File]]("generate-all")
 
   val enableManagedClassPath = settingKey[Boolean]("enable-managed-class-path")
 
