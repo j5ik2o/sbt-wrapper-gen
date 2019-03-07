@@ -20,7 +20,7 @@ jobs:
       - restore_cache:
           keys:
             - v1-dependencies-{{ checksum "build.sbt" }}
-      - run: sbt test
+      - run: sbt compile
 
       - save_cache:
           paths:
@@ -29,5 +29,4 @@ jobs:
           key: v1-dependencies--{{ checksum "build.sbt" }}
       - run:
           command: |
-            sbt ';++2.10.6;^^0.13.16;scripted'
-            sbt ';++2.12.4;^^1.0.4;scripted'
+            sbt scripted test

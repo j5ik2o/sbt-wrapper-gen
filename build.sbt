@@ -1,8 +1,6 @@
 import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations._
 import xerial.sbt.Sonatype.autoImport._
 
-releaseCrossBuild := true
-
 releasePublishArtifactsAction := PgpKeys.publishSigned.value
 
 releaseProcess := Seq[ReleaseStep](
@@ -59,15 +57,7 @@ name := "sbt-wrapper-gen"
 
 sbtPlugin := true
 
-val sbtCrossVersion = sbtVersion in pluginCrossBuild
-
-scalaVersion := (CrossVersion partialVersion sbtCrossVersion.value match {
-  case Some((0, 13)) => "2.10.6"
-  case Some((1, _)) => "2.12.8"
-  case _ => sys error s"Unhandled sbt version ${sbtCrossVersion.value}"
-})
-
-crossSbtVersions := Seq("0.13.16", "1.0.4")
+scalaVersion := "2.12.8"
 
 resolvers ++= Seq(
   "Sonatype OSS Snapshot Repository" at "https://oss.sonatype.org/content/repositories/snapshots/",
@@ -75,7 +65,6 @@ resolvers ++= Seq(
   "Typesafe Releases" at "http://repo.typesafe.com/typesafe/releases/",
   "Seasar Repository" at "http://maven.seasar.org/maven2/"
 )
-
 
 libraryDependencies ++= Seq(
   "ch.qos.logback" % "logback-classic" % "1.1.3",
