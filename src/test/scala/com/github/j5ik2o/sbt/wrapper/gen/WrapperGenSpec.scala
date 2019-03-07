@@ -28,10 +28,11 @@ class WrapperGenSpec extends FreeSpec with Matchers with WrapperGen {
           ClassDesc(
             "Customer",
             ConstructorDesc(
-              Vector(ParameterTypeDesc("firstName", StringTypeDesc()), ParameterTypeDesc("lastName", StringTypeDesc()))
+              Vector(ParameterTypeDesc("firstName", StringTypeDesc(), notNull = false),
+                     ParameterTypeDesc("lastName", StringTypeDesc(), notNull = false))
             ),
-            Vector(MethodDesc("getFirstName", Vector(), StringTypeDesc()),
-                   MethodDesc("getLastName", Vector(), StringTypeDesc())),
+            Vector(MethodDesc("getFirstName", Vector(), StringTypeDesc(), notNull = true),
+                   MethodDesc("getLastName", Vector(), StringTypeDesc(), notNull = true)),
             Some("example")
           )
         )

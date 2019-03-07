@@ -82,10 +82,12 @@ case class ArrayTypeDesc(valueTypeName: TypeDesc) extends TypeDesc {
     Map[String, AnyRef]("simpleTypeName" -> simpleTypeName, "valueTypeName" -> valueTypeName.simpleTypeName).asJava
 }
 
-case class ParameterTypeDesc(name: String, typeName: TypeDesc) extends Ast {
+case class ParameterTypeDesc(name: String, typeName: TypeDesc, notNull: Boolean) extends Ast {
   override def asString: String = s"$name: ${typeName.asString}"
   override def asMap: util.Map[String, AnyRef] =
-    Map("name" -> name, "typeName" -> typeName.asMap).asJava
+    Map[String, AnyRef]("name"     -> name,
+                        "typeName" -> typeName.asMap,
+                        "notNull"  -> notNull.asInstanceOf[java.lang.Boolean]).asJava
 }
 
 case class ConstructorDesc(parameters: Seq[ParameterTypeDesc]) extends Ast {
@@ -95,13 +97,15 @@ case class ConstructorDesc(parameters: Seq[ParameterTypeDesc]) extends Ast {
     Map[String, AnyRef]("parameters" -> parameters.map(_.asMap).asJava).asJava
 }
 
-case class MethodDesc(name: String, parameters: Seq[ParameterTypeDesc], returnType: TypeDesc) extends Ast {
+case class MethodDesc(name: String, parameters: Seq[ParameterTypeDesc], returnType: TypeDesc, notNull: Boolean)
+    extends Ast {
   override def asString: String =
     s"def $name(${parameters.map(_.asString).mkString(",")}): ${returnType.asString}"
   override def asMap: util.Map[String, AnyRef] =
     Map[String, AnyRef]("name"       -> name,
                         "parameters" -> parameters.map(_.asMap).asJava,
-                        "returnType" -> returnType.asMap).asJava
+                        "returnType" -> returnType.asMap,
+                        "notNull"    -> notNull.asInstanceOf[java.lang.Boolean]).asJava
 }
 
 case class ClassDesc(simpleTypeName: String,

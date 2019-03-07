@@ -139,10 +139,12 @@ trait WrapperGen {
     override def visit(n: ConstructorDeclaration, arg: RESULT): Unit = {
       val params = ArrayBuffer.empty[ParameterTypeDesc]
       n.getParameters.asScala.foreach { v =>
-        val pName    = v.getName
-        val pType    = v.getType
+        val pName = v.getName
+        val pType = v.getType
+        val notNull = pType.getAnnotations.asScala
+          .map(_.getName.asString().toLowerCase()).exists(v => v == "nonnull" || v == "notnull")
         val typeDesc = parseType(pType, arg.typeDescMapper)
-        params.append(ParameterTypeDesc(pName.asString(), typeDesc))
+        params.append(ParameterTypeDesc(pName.asString(), typeDesc, notNull))
       }
       constructorDesc = ConstructorDesc(params.result.toVector)
       super.visit(n, arg)
@@ -154,14 +156,19 @@ trait WrapperGen {
         val methodName = obj.getName.asString()
         val params     = ArrayBuffer.empty[ParameterTypeDesc]
         obj.getParameters.asScala.foreach { v =>
-          val pName    = v.getName
-          val pType    = v.getType
+          val pName = v.getName
+          val pType = v.getType
+          val notNull = pType.getAnnotations.asScala
+            .map(_.getName.asString().toLowerCase()).exists(v => v == "nonnull" || v == "notnull")
           val typeDesc = parseType(pType, arg.typeDescMapper)
-          params.append(ParameterTypeDesc(pName.asString(), typeDesc))
+          params.append(ParameterTypeDesc(pName.asString(), typeDesc, notNull))
         }
         val returnTypeName = parseType(obj.getType, arg.typeDescMapper)
+        val notNull =
+          obj.getAnnotations.asScala
+            .map(_.getName.asString().toLowerCase()).exists(v => v == "nonnull" || v == "notnull")
         methodDescs.append(
-          MethodDesc(methodName, params.result.toVector, returnTypeName)
+          MethodDesc(methodName, params.result.toVector, returnTypeName, notNull)
         )
       }
       super.visit(n, arg)
