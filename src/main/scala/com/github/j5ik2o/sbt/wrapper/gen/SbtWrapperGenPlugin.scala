@@ -14,7 +14,6 @@ object SbtWrapperGenPlugin extends AutoPlugin with WrapperGenerator {
   import autoImport._
 
   override def projectSettings: Seq[Def.Setting[_]] = Seq(
-    enableManagedClassPath in scalaWrapperGen := true,
     templateDirectory in scalaWrapperGen := baseDirectory.value / "sbt-wrapper-gen",
     templateNameMapper in scalaWrapperGen := { _ =>
       "template.ftl"
@@ -24,7 +23,7 @@ object SbtWrapperGenPlugin extends AutoPlugin with WrapperGenerator {
       (sourceManaged in Compile).value
     },
     javaParserConfiguration := None,
-    typeDescFilter := { _ =>
+    classDescFilter := { _ =>
       true
     },
     typeDescMapper in scalaWrapperGen := WrapperGenerator.defaultTypeDescMapper,
