@@ -8,13 +8,14 @@ trait SbtWrapperGenKeys {
 
   val scalaWrapperGen = taskKey[Unit]("sbt-wrapper-gen key")
 
-  val typeDescFilter          = settingKey[TypeDesc => Boolean]("")
-  val typeDescMapper          = settingKey[(String, Seq[TypeDesc]) => TypeDesc]("")
-  val templateDirectory       = settingKey[File]("")
-  val templateNameMapper      = settingKey[TypeDesc => String]("")
-  val inputDirectory          = settingKey[File]("")
-  val outputDirectoryMapper   = settingKey[TypeDesc => File]("")
-  val javaParserConfiguration = settingKey[Option[ParserConfiguration]]("")
+  val inputClassNames             = settingKey[Seq[String]]("the class names for input")
+  val typeDescFilter              = settingKey[TypeDesc => Boolean]("")
+  val typeDescMapper              = settingKey[(String, Seq[TypeDesc]) => TypeDesc]("")
+  val templateDirectory           = settingKey[File]("")
+  val templateNameMapper          = settingKey[TypeDesc => String]("")
+  val inputSourceDirectory        = settingKey[File]("")
+  val outputSourceDirectoryMapper = settingKey[TypeDesc => File]("")
+  val javaParserConfiguration     = settingKey[Option[ParserConfiguration]]("")
 
   val generateOne  = inputKey[Seq[File]]("generate-one")
   val generateMany = inputKey[Seq[File]]("generate-many")

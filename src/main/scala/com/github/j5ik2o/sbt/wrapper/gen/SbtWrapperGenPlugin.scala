@@ -19,8 +19,9 @@ object SbtWrapperGenPlugin extends AutoPlugin with WrapperGen {
     templateNameMapper in scalaWrapperGen := { _ =>
       "template.ftl"
     },
-    inputDirectory := baseDirectory.value / "sbt-wrapper-gen" / "java",
-    outputDirectoryMapper in scalaWrapperGen := { _ =>
+    inputClassNames := Seq.empty,
+    inputSourceDirectory := baseDirectory.value / "sbt-wrapper-gen" / "java",
+    outputSourceDirectoryMapper in scalaWrapperGen := { _ =>
       (sourceManaged in Compile).value
     },
     javaParserConfiguration := None,

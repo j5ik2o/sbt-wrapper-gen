@@ -97,8 +97,8 @@ case class CompletableFutureDesc(valueTypeName: TypeDesc) extends TypeDesc {
 }
 
 case class ScalaFutureDesc(valueTypeName: TypeDesc) extends TypeDesc {
-  override def simpleTypeName: String = s"CompletableFuture"
-  override def fullTypeName: String   = s"CompletableFuture[${valueTypeName.asString}]"
+  override def simpleTypeName: String = s"Future"
+  override def fullTypeName: String   = s"Future[${valueTypeName.asString}]"
   override def asString: String       = fullTypeName
   override def asMap: util.Map[String, AnyRef] =
     Map[String, AnyRef]("simpleTypeName" -> simpleTypeName, "valueTypeName" -> valueTypeName.simpleTypeName).asJava

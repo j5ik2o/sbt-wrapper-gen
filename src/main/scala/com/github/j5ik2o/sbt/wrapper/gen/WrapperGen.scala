@@ -194,8 +194,8 @@ trait WrapperGen {
     val typeDescMapperValue        = (typeDescMapper in scalaWrapperGen).value
     val templateDirectoryValue     = (templateDirectory in scalaWrapperGen).value
     val templateNameMapperValue    = (templateNameMapper in scalaWrapperGen).value
-    val inputDirectoryValue        = (inputDirectory in scalaWrapperGen).value
-    val outputDirectoryMapperValue = (outputDirectoryMapper in scalaWrapperGen).value
+    val inputDirectoryValue        = (inputSourceDirectory in scalaWrapperGen).value
+    val outputDirectoryMapperValue = (outputSourceDirectoryMapper in scalaWrapperGen).value
     val parserConfigurationValue   = (javaParserConfiguration in scalaWrapperGen).value
 
     val ctx: GeneratorContext = GeneratorContext(
@@ -229,8 +229,8 @@ trait WrapperGen {
     val typeDescMapperValue        = (typeDescMapper in scalaWrapperGen).value
     val templateDirectoryValue     = (templateDirectory in scalaWrapperGen).value
     val templateNameMapperValue    = (templateNameMapper in scalaWrapperGen).value
-    val inputDirectoryValue        = (inputDirectory in scalaWrapperGen).value
-    val outputDirectoryMapperValue = (outputDirectoryMapper in scalaWrapperGen).value
+    val inputDirectoryValue        = (inputSourceDirectory in scalaWrapperGen).value
+    val outputDirectoryMapperValue = (outputSourceDirectoryMapper in scalaWrapperGen).value
     val parserConfigurationValue   = (javaParserConfiguration in scalaWrapperGen).value
 
     val context: GeneratorContext = GeneratorContext(
@@ -265,8 +265,8 @@ trait WrapperGen {
       val typeDescMapperValue        = (typeDescMapper in scalaWrapperGen).value
       val templateDirectoryValue     = (templateDirectory in scalaWrapperGen).value
       val templateNameMapperValue    = (templateNameMapper in scalaWrapperGen).value
-      val inputDirectoryValue        = (inputDirectory in scalaWrapperGen).value
-      val outputDirectoryMapperValue = (outputDirectoryMapper in scalaWrapperGen).value
+      val inputDirectoryValue        = (inputSourceDirectory in scalaWrapperGen).value
+      val outputDirectoryMapperValue = (outputSourceDirectoryMapper in scalaWrapperGen).value
       val parserConfigurationValue   = (javaParserConfiguration in scalaWrapperGen).value
 
       val context: GeneratorContext = GeneratorContext(
