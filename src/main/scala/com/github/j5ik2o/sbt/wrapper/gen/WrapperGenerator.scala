@@ -458,7 +458,9 @@ trait WrapperGenerator {
     }
 
     override def visit(n: MethodDeclaration, arg: RESULT): Unit = {
-      if (n.getModifiers.contains(Modifier.publicModifier())) {
+      if (!n.getModifiers.contains(Modifier.privateModifier()) && !n.getModifiers.contains(
+            Modifier.protectedModifier()
+          )) {
         val obj        = n.asMethodDeclaration()
         val isThrows   = obj.getThrownExceptions.isNonEmpty
         val methodName = obj.getName.asString()

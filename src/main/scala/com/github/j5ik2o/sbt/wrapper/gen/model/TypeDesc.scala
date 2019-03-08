@@ -17,35 +17,39 @@ sealed trait TypeDesc extends Ast {
 }
 
 case class PrimitiveTypeDesc(primitiveType: PrimitiveType) extends TypeDesc {
-  override def simpleTypeName: String          = primitiveType.entryName
-  override def fullTypeName: String            = simpleTypeName
-  override def asString: String                = simpleTypeName
-  override def asMap: util.Map[String, AnyRef] = Map[String, AnyRef]("simpleTypeName" -> simpleTypeName).asJava
-  override def asScalaDesc: TypeDesc           = this
+  override def simpleTypeName: String = primitiveType.entryName
+  override def fullTypeName: String   = simpleTypeName
+  override def asString: String       = simpleTypeName
+  override def asMap: util.Map[String, AnyRef] =
+    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName, "fullTypeName" -> fullTypeName).asJava
+  override def asScalaDesc: TypeDesc = this
 }
 
 case class UnitTypeDesc() extends TypeDesc {
-  override def simpleTypeName: String          = "Unit"
-  override def fullTypeName: String            = simpleTypeName
-  override def asString: String                = fullTypeName
-  override def asMap: util.Map[String, AnyRef] = Map[String, AnyRef]("simpleTypeName" -> simpleTypeName).asJava
-  override def asScalaDesc: TypeDesc           = this
+  override def simpleTypeName: String = "Unit"
+  override def fullTypeName: String   = simpleTypeName
+  override def asString: String       = fullTypeName
+  override def asMap: util.Map[String, AnyRef] =
+    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName, "fullTypeName" -> fullTypeName).asJava
+  override def asScalaDesc: TypeDesc = this
 }
 
 case class VoidTypeDesc() extends TypeDesc {
-  override def simpleTypeName: String          = "void"
-  override def fullTypeName: String            = simpleTypeName
-  override def asString: String                = simpleTypeName
-  override def asMap: util.Map[String, AnyRef] = Map[String, AnyRef]("simpleTypeName" -> simpleTypeName).asJava
-  override def asScalaDesc: TypeDesc           = UnitTypeDesc()
+  override def simpleTypeName: String = "void"
+  override def fullTypeName: String   = simpleTypeName
+  override def asString: String       = simpleTypeName
+  override def asMap: util.Map[String, AnyRef] =
+    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName, "fullTypeName" -> fullTypeName).asJava
+  override def asScalaDesc: TypeDesc = UnitTypeDesc()
 }
 
 case class StringTypeDesc() extends TypeDesc {
-  override def simpleTypeName: String          = "String"
-  override def fullTypeName: String            = simpleTypeName
-  override def asString: String                = simpleTypeName
-  override def asMap: util.Map[String, AnyRef] = Map[String, AnyRef]("simpleTypeName" -> simpleTypeName).asJava
-  override def asScalaDesc: TypeDesc           = this
+  override def simpleTypeName: String = "String"
+  override def fullTypeName: String   = simpleTypeName
+  override def asString: String       = simpleTypeName
+  override def asMap: util.Map[String, AnyRef] =
+    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName, "fullTypeName" -> fullTypeName).asJava
+  override def asScalaDesc: TypeDesc = this
 }
 
 case class MapTypeDesc(keyTypeName: TypeDesc, valueTypeName: TypeDesc) extends TypeDesc {
@@ -88,11 +92,13 @@ case class WildcardTypeDesc(typeName: String) extends TypeDesc {
 
 case class OtherTypeDesc(typeName: String, typeParameters: Seq[TypeDesc] = Seq.empty) extends TypeDesc {
   override def simpleTypeName: String = typeName
-  override def fullTypeName: String   = s"$simpleTypeName${typeParameters.map(_.simpleTypeName).mkString("[", ",", "]")}"
-  override def asString: String       = fullTypeName
+  override def fullTypeName: String =
+    simpleTypeName + (if (typeParameters.nonEmpty) typeParameters.map(_.simpleTypeName).mkString(",") else "")
+  override def asString: String = fullTypeName
   override def asMap: util.Map[String, AnyRef] =
     (Map[String, AnyRef](
-      "simpleTypeName" -> simpleTypeName
+      "simpleTypeName" -> simpleTypeName,
+      "fullTypeName"   -> fullTypeName
     ) ++ (if (typeParameters.nonEmpty) Map("typeParameters" -> typeParameters.map(_.asMap).asJava) else Map.empty)).asJava
   override def asScalaDesc: TypeDesc = OtherTypeDesc(typeName, typeParameters.map(_.asScalaDesc))
 }
@@ -102,7 +108,9 @@ case class CompletableFutureDesc(valueTypeName: TypeDesc) extends TypeDesc {
   override def fullTypeName: String   = s"CompletableFuture[${valueTypeName.asString}]"
   override def asString: String       = fullTypeName
   override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName, "valueTypeName" -> valueTypeName.simpleTypeName).asJava
+    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName,
+                        "fullTypeName"   -> fullTypeName,
+                        "valueTypeName"  -> valueTypeName.simpleTypeName).asJava
   def asScalaDesc = ScalaFutureDesc(valueTypeName)
 }
 
@@ -111,7 +119,9 @@ case class ScalaFutureDesc(valueTypeName: TypeDesc) extends TypeDesc {
   override def fullTypeName: String   = s"Future[${valueTypeName.asString}]"
   override def asString: String       = fullTypeName
   override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName, "valueTypeName" -> valueTypeName.simpleTypeName).asJava
+    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName,
+                        "fullTypeName"   -> fullTypeName,
+                        "valueTypeName"  -> valueTypeName.simpleTypeName).asJava
   override def asScalaDesc: TypeDesc = this
 }
 
@@ -120,7 +130,9 @@ case class SeqTypeDesc(valueTypeName: TypeDesc) extends TypeDesc {
   override def fullTypeName: String   = s"List[${valueTypeName.asString}]"
   override def asString: String       = fullTypeName
   override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName, "valueTypeName" -> valueTypeName.simpleTypeName).asJava
+    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName,
+                        "fullTypeName"   -> fullTypeName,
+                        "valueTypeName"  -> valueTypeName.simpleTypeName).asJava
   override def asScalaDesc: TypeDesc = this
 }
 
@@ -129,7 +141,9 @@ case class JavaListTypeDesc(valueTypeName: TypeDesc) extends TypeDesc {
   override def fullTypeName: String   = s"List[${valueTypeName.asString}]"
   override def asString: String       = fullTypeName
   override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName, "valueTypeName" -> valueTypeName.simpleTypeName).asJava
+    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName,
+                        "fullTypeName"   -> fullTypeName,
+                        "valueTypeName"  -> valueTypeName.simpleTypeName).asJava
   override def asScalaDesc: TypeDesc = SeqTypeDesc(valueTypeName.asScalaDesc)
 }
 
@@ -138,7 +152,9 @@ case class ArrayTypeDesc(valueTypeName: TypeDesc) extends TypeDesc {
   override def fullTypeName: String   = s"Array[${valueTypeName.asString}]"
   override def asString: String       = fullTypeName
   override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName, "valueTypeName" -> valueTypeName.simpleTypeName).asJava
+    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName,
+                        "fullTypeName"   -> fullTypeName,
+                        "valueTypeName"  -> valueTypeName.simpleTypeName).asJava
   override def asScalaDesc: TypeDesc = this
 }
 
@@ -187,7 +203,9 @@ case class ClassDesc(simpleTypeName: String,
     "}"
   }
   override def asMap: util.Map[String, AnyRef] =
-    (Map[String, AnyRef]("simpleTypeName" -> simpleTypeName, "methods" -> methods.map(_.asMap).asJava) ++
+    (Map[String, AnyRef]("simpleTypeName" -> simpleTypeName,
+                         "fullTypeName"   -> fullTypeName,
+                         "methods"        -> methods.map(_.asMap).asJava) ++
     (if (packageName.nonEmpty) Map("packageName" -> packageName.get) else Map.empty)).asJava
   override def asScalaDesc: TypeDesc = this
 }
