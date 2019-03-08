@@ -18,12 +18,12 @@ object SbtWrapperGenPlugin extends AutoPlugin with WrapperGenerator {
     templateNameMapper in scalaWrapperGen := { _ =>
       "template.ftl"
     },
-    inputSourceDirectory := baseDirectory.value / "sbt-wrapper-gen" / "java",
+    inputSourceDirectory in scalaWrapperGen := baseDirectory.value / "sbt-wrapper-gen" / "java",
     outputSourceDirectoryMapper in scalaWrapperGen := { _ =>
       (sourceManaged in Compile).value
     },
-    javaParserConfiguration := None,
-    classDescFilter := { _ =>
+    javaParserConfiguration in scalaWrapperGen := None,
+    classDescFilter in scalaWrapperGen := { _ =>
       true
     },
     typeDescMapper in scalaWrapperGen := WrapperGenerator.defaultTypeDescMapper,
