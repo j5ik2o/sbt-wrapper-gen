@@ -1,5 +1,7 @@
 package com.github.j5ik2o.sbt.wrapper.gen
 
+import java.nio.file.Paths
+
 import com.github.j5ik2o.sbt.wrapper.gen.model._
 import org.scalatest.{ FreeSpec, Matchers }
 import sbt.internal.util.ConsoleLogger
@@ -21,6 +23,7 @@ class WrapperGeneratorSpec extends FreeSpec with Matchers with WrapperGenerator 
         templateNameMapper = null,
         inputDirectory = sbt.file("src/test/java/example"),
         outputDirectoryMapper = null,
+        classNameMapper = { _.simpleTypeName },
         parserConfigurationOpt = None
       )
       getClassDescs(context) shouldBe Success(
@@ -40,6 +43,7 @@ class WrapperGeneratorSpec extends FreeSpec with Matchers with WrapperGenerator 
               MethodDesc("getFirstName", Vector(), StringTypeDesc(), true, false),
               MethodDesc("getLastName", Vector(), StringTypeDesc(), false, false)
             ),
+            Paths.get("src/test/java/example/Customer.java"),
             Some("example")
           )
         )

@@ -26,6 +26,7 @@ object WrapperGenerator {
   type TypeDescMapper        = (String, Seq[TypeDesc]) => TypeDesc
   type TemplateNameMapper    = ClassDesc => String
   type OutputDirectoryMapper = ClassDesc => File
+  type ClassNameMapper       = ClassDesc => String
 
   val defaultTypeDescMapper: TypeDescMapper = {
     case ("String", _) =>
@@ -38,20 +39,36 @@ object WrapperGenerator {
       JavaMapTypeDesc(keyType, valueType)
     case ("CompletableFuture", Seq(paramType)) =>
       CompletableFutureDesc(paramType)
+    case ("int", _) =>
+      PrimitiveTypeDesc(PrimitiveType.INT)
     case ("Integer", _) =>
       PrimitiveTypeDesc(PrimitiveType.INT)
-    case ("Log", _) =>
+    case ("long", _) =>
       PrimitiveTypeDesc(PrimitiveType.LONG)
+    case ("Long", _) =>
+      PrimitiveTypeDesc(PrimitiveType.LONG)
+    case ("short", _) =>
+      PrimitiveTypeDesc(PrimitiveType.SHORT)
     case ("Short", _) =>
       PrimitiveTypeDesc(PrimitiveType.SHORT)
+    case ("boolean", _) =>
+      PrimitiveTypeDesc(PrimitiveType.BOOLEAN)
     case ("Boolean", _) =>
       PrimitiveTypeDesc(PrimitiveType.BOOLEAN)
+    case ("byte", _) =>
+      PrimitiveTypeDesc(PrimitiveType.BYTE)
     case ("Byte", _) =>
       PrimitiveTypeDesc(PrimitiveType.BYTE)
+    case ("char", _) =>
+      PrimitiveTypeDesc(PrimitiveType.CHAR)
     case ("Char", _) =>
       PrimitiveTypeDesc(PrimitiveType.CHAR)
+    case ("double", _) =>
+      PrimitiveTypeDesc(PrimitiveType.DOUBLE)
     case ("Double", _) =>
       PrimitiveTypeDesc(PrimitiveType.DOUBLE)
+    case ("float", _) =>
+      PrimitiveTypeDesc(PrimitiveType.FLOAT)
     case ("Float", _) =>
       PrimitiveTypeDesc(PrimitiveType.FLOAT)
     case (other, paramTypes) =>
@@ -124,6 +141,9 @@ trait WrapperGenerator {
       case t if t.isWildcardType =>
         val wt = t.asWildcardType()
         context.logger.debug(s"wt = $wt")
+        OptionConverters.toScala(wt.getExtendedType).foreach { rt =>
+          context.logger.info("tw.extended" + rt.toString)
+        }
         null
     }
   }
@@ -139,6 +159,7 @@ trait WrapperGenerator {
     val templateNameMapperValue    = (templateNameMapper in scalaWrapperGen).value
     val inputDirectoryValue        = (inputSourceDirectory in scalaWrapperGen).value
     val outputDirectoryMapperValue = (outputSourceDirectoryMapper in scalaWrapperGen).value
+    val classNameMapperValue       = (classNameMapper in scalaWrapperGen).value
     val parserConfigurationValue   = (javaParserConfiguration in scalaWrapperGen).value
 
     val ctx: GeneratorContext = GeneratorContext(
@@ -149,6 +170,7 @@ trait WrapperGenerator {
       templateNameMapper = templateNameMapperValue,
       inputDirectory = inputDirectoryValue,
       outputDirectoryMapper = outputDirectoryMapperValue,
+      classNameMapper = classNameMapperValue,
       parserConfigurationOpt = parserConfigurationValue
     )
     _generateOne(ctx, className).get
@@ -187,6 +209,7 @@ trait WrapperGenerator {
     val templateNameMapperValue    = (templateNameMapper in scalaWrapperGen).value
     val inputDirectoryValue        = (inputSourceDirectory in scalaWrapperGen).value
     val outputDirectoryMapperValue = (outputSourceDirectoryMapper in scalaWrapperGen).value
+    val classNameMapperValue       = (classNameMapper in scalaWrapperGen).value
     val parserConfigurationValue   = (javaParserConfiguration in scalaWrapperGen).value
 
     val context: GeneratorContext = GeneratorContext(
@@ -197,6 +220,7 @@ trait WrapperGenerator {
       templateNameMapper = templateNameMapperValue,
       inputDirectory = inputDirectoryValue,
       outputDirectoryMapper = outputDirectoryMapperValue,
+      classNameMapper = classNameMapperValue,
       parserConfigurationOpt = parserConfigurationValue
     )
     _generateMany(context, classNames).get
@@ -250,7 +274,7 @@ trait WrapperGenerator {
             .map { result =>
               val visitor = new Visitor()
               result.accept(visitor, context)
-              Seq(visitor.result)
+              Seq(visitor.result(path))
             }.getOrElse(Seq.empty)
         }
       }
@@ -283,7 +307,8 @@ trait WrapperGenerator {
     implicit val logger = context.logger
     logger.debug(s"generateFiles($cfg, $classDesc): start")
     val outputTargetDirectory = context.outputDirectoryMapper(classDesc)
-    val result                = generateFile(context, cfg, classDesc, classDesc.simpleTypeName, outputTargetDirectory).map(Seq(_))
+    val className             = context.classNameMapper(classDesc)
+    val result                = generateFile(context, cfg, classDesc, className, outputTargetDirectory).map(Seq(_))
     logger.debug(s"generateFiles: finished = $result")
     result
   }
@@ -297,13 +322,16 @@ trait WrapperGenerator {
     logger.debug(s"generateFile($cfg, $classDesc, $className, $outputDirectory): start")
     val templateName = context.templateNameMapper(classDesc)
     val template     = cfg.getTemplate(templateName)
-    val file         = createFile(outputDirectory, className)
+
+    val ou = outputDirectory / classDesc.packageName.map(v => v.replace(".", "/")).getOrElse("")
+    context.logger.debug(s"ou = $ou")
+    val file = createFile(ou, className)
     context.logger.debug(
       s"classDesc = $classDesc, className = $className, templateName = $templateName, generate file = $file"
     )
 
-    if (!outputDirectory.exists())
-      IO.createDirectory(outputDirectory)
+    if (!ou.exists())
+      IO.createDirectory(ou)
 
     val result = using(new FileWriter(file)) { writer =>
       template.process(classDesc.asMap, writer)
@@ -320,6 +348,7 @@ trait WrapperGenerator {
   ): File = {
     logger.debug(s"createFile($outputDirectory, $className): start")
     val file = outputDirectory / (className + ".scala")
+
     logger.debug(s"createFile: finished = $file")
     file
   }
@@ -334,6 +363,7 @@ trait WrapperGenerator {
     val templateNameMapperValue    = (templateNameMapper in scalaWrapperGen).value
     val inputDirectoryValue        = (inputSourceDirectory in scalaWrapperGen).value
     val outputDirectoryMapperValue = (outputSourceDirectoryMapper in scalaWrapperGen).value
+    val classNameMapperValue       = (classNameMapper in scalaWrapperGen).value
     val parserConfigurationValue   = (javaParserConfiguration in scalaWrapperGen).value
 
     val context: GeneratorContext = GeneratorContext(
@@ -344,6 +374,7 @@ trait WrapperGenerator {
       templateNameMapper = templateNameMapperValue,
       inputDirectory = inputDirectoryValue,
       outputDirectoryMapper = outputDirectoryMapperValue,
+      classNameMapper = classNameMapperValue,
       parserConfigurationOpt = parserConfigurationValue
     )
     _generateAll(context).get
@@ -377,6 +408,7 @@ trait WrapperGenerator {
                               templateNameMapper: TemplateNameMapper,
                               inputDirectory: File,
                               outputDirectoryMapper: OutputDirectoryMapper,
+                              classNameMapper: ClassNameMapper,
                               parserConfigurationOpt: Option[ParserConfiguration]) {
     val javaParser = parserConfigurationOpt.map(pc => new JavaParser(pc)).getOrElse(new JavaParser())
   }
@@ -387,10 +419,17 @@ trait WrapperGenerator {
     private var className: String                = _
     private var packageName: Option[String]      = None
     private var constructorDesc: ConstructorDesc = _
+    private var enum: Boolean                    = false
 
-    def result: ClassDesc = {
-      val result = ClassDesc(className, constructorDesc, methodDescs.result.toVector, packageName)
+    def result(path: Path): ClassDesc = {
+      require(className != null)
+      val result = ClassDesc(className, constructorDesc, methodDescs.result.toVector, path, packageName)
       result
+    }
+
+    override def visit(n: EnumDeclaration, arg: RESULT): Unit = {
+      className = n.getName.getIdentifier
+      super.visit(n, arg)
     }
 
     override def visit(n: PackageDeclaration, arg: RESULT): Unit = {

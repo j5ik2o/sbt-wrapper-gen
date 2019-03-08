@@ -1,6 +1,8 @@
 package com.github.j5ik2o.sbt.wrapper.gen.model
 
+import java.nio.file.Path
 import java.util
+
 import scala.collection.JavaConverters._
 
 sealed trait Ast {
@@ -175,6 +177,7 @@ case class MethodDesc(name: String,
 case class ClassDesc(simpleTypeName: String,
                      constructor: ConstructorDesc,
                      methods: Seq[MethodDesc],
+                     path: Path,
                      packageName: Option[String] = None)
     extends TypeDesc {
   override def fullTypeName: String = simpleTypeName

@@ -1,6 +1,6 @@
 package com.github.j5ik2o.sbt.wrapper.gen
 
-import com.github.j5ik2o.sbt.wrapper.gen.model.{ClassDesc, TypeDesc}
+import com.github.j5ik2o.sbt.wrapper.gen.model.{ ClassDesc, TypeDesc }
 import com.github.javaparser.ParserConfiguration
 import sbt._
 
@@ -8,12 +8,13 @@ trait SbtWrapperGenKeys {
 
   val scalaWrapperGen = taskKey[Unit]("sbt-wrapper-gen key")
 
-  val classDescFilter              = settingKey[ClassDesc => Boolean]("class desc filter")
+  val classDescFilter             = settingKey[ClassDesc => Boolean]("class desc filter")
   val typeDescMapper              = settingKey[(String, Seq[TypeDesc]) => TypeDesc]("type desc mapper")
   val templateDirectory           = settingKey[File]("template directory")
   val templateNameMapper          = settingKey[ClassDesc => String]("template name mapper")
   val inputSourceDirectory        = settingKey[File]("input source directory")
   val outputSourceDirectoryMapper = settingKey[TypeDesc => File]("output source directory")
+  val classNameMapper             = settingKey[ClassDesc => String]("class name mapper")
   val javaParserConfiguration     = settingKey[Option[ParserConfiguration]]("java parser configuration")
 
   val generateOne  = inputKey[Seq[File]]("generate-one task")
