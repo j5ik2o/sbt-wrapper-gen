@@ -72,34 +72,59 @@ trait WrapperGenerator {
 
   private val manyStringParser: Parser[Seq[String]] = token(Space ~> StringBasic, "java class name") +
 
-  def parseType(t: Type, typeMapper: TypeDescMapper): TypeDesc = {
+  def parseType(context: GeneratorContext, t: Type, typeMapper: TypeDescMapper): TypeDesc = {
     t match {
       case t if t.isArrayType =>
         val at        = t.asArrayType()
-        val paramType = parseType(at.getElementType, typeMapper)
+        val paramType = parseType(context, at.getElementType, typeMapper)
         typeMapper("Array", Seq(paramType))
       case t if t.isClassOrInterfaceType =>
         val cit      = t.asClassOrInterfaceType()
         val typeName = cit.getName.getIdentifier
         val ta = OptionConverters
           .toScala(cit.getTypeArguments).map { typeArguments =>
-            typeArguments.asScala.map { t =>
-              parseType(t, typeMapper)
+            typeArguments.asScala.flatMap { t =>
+              val result = parseType(context, t, typeMapper)
+              if (result == null)
+                Seq.empty
+              else
+                Seq(result)
             }
           }.getOrElse(Seq.empty)
         typeMapper(typeName, ta)
-      case t if t.isIntersectionType => null
+      case t if t.isIntersectionType =>
+        val it = t.asIntersectionType()
+        context.logger.debug(s"it = $it")
+        null
       case t if t.isPrimitiveType =>
         val pt       = t.asPrimitiveType()
         val typeName = pt.asString
         typeMapper(typeName, Seq.empty)
-      case t if t.isReferenceType => null
-      case t if t.isTypeParameter => null
-      case t if t.isUnionType     => null
-      case t if t.isUnknownType   => null
-      case t if t.isVarType       => null
-      case t if t.isVoidType      => VoidTypeDesc()
-      case t if t.isWildcardType  => null
+      case t if t.isReferenceType =>
+        val rt = t.asReferenceType()
+        context.logger.debug(s"rt = $rt")
+        null
+      case t if t.isTypeParameter =>
+        val tp = t.asTypeParameter()
+        context.logger.debug(s"tp = $tp")
+        null
+      case t if t.isUnionType =>
+        val ut = t.asUnionType()
+        context.logger.debug(s"ut1 = $ut")
+        null
+      case t if t.isUnknownType =>
+        val ut = t.asUnionType()
+        context.logger.debug(s"ut2 = $ut")
+        null
+      case t if t.isVarType =>
+        val vt = t.asVarType()
+        context.logger.debug(s"vt = $vt")
+        null
+      case t if t.isVoidType => VoidTypeDesc()
+      case t if t.isWildcardType =>
+        val wt = t.asWildcardType()
+        context.logger.debug(s"wt = $wt")
+        null
     }
   }
 
@@ -273,7 +298,7 @@ trait WrapperGenerator {
     val templateName = context.templateNameMapper(classDesc)
     val template     = cfg.getTemplate(templateName)
     val file         = createFile(outputDirectory, className)
-    context.logger.info(
+    context.logger.debug(
       s"classDesc = $classDesc, className = $className, templateName = $templateName, generate file = $file"
     )
 
@@ -386,7 +411,7 @@ trait WrapperGenerator {
         val pType = v.getType
         val notNull = pType.getAnnotations.asScala
           .map(_.getName.asString().toLowerCase()).exists(v => v == "nonnull" || v == "notnull")
-        val typeDesc = parseType(pType, arg.typeDescMapper)
+        val typeDesc = parseType(arg, pType, arg.typeDescMapper)
         params.append(ParameterTypeDesc(pName.asString(), typeDesc, notNull))
       }
       constructorDesc = ConstructorDesc(params.result.toVector)
@@ -404,10 +429,10 @@ trait WrapperGenerator {
           val pType = v.getType
           val notNull = pType.getAnnotations.asScala
             .map(_.getName.asString().toLowerCase()).exists(v => v == "nonnull" || v == "notnull")
-          val typeDesc = parseType(pType, arg.typeDescMapper)
+          val typeDesc = parseType(arg, pType, arg.typeDescMapper)
           params.append(ParameterTypeDesc(pName.asString(), typeDesc, notNull))
         }
-        val returnTypeName = parseType(obj.getType, arg.typeDescMapper)
+        val returnTypeName = parseType(arg, obj.getType, arg.typeDescMapper)
         val notNull =
           obj.getAnnotations.asScala
             .map(_.getName.asString().toLowerCase()).exists(v => v == "nonnull" || v == "notnull")

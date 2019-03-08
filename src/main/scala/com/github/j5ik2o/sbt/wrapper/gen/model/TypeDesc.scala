@@ -76,6 +76,14 @@ case class JavaMapTypeDesc(keyTypeName: TypeDesc, valueTypeName: TypeDesc) exten
   override def asScalaDesc: TypeDesc = MapTypeDesc(keyTypeName.asScalaDesc, valueTypeName.asScalaDesc)
 }
 
+case class WildcardTypeDesc(typeName: String) extends TypeDesc {
+  override def simpleTypeName: String          = typeName
+  override def fullTypeName: String            = simpleTypeName
+  override def asScalaDesc: TypeDesc           = this
+  override def asString: String                = simpleTypeName
+  override def asMap: util.Map[String, AnyRef] = Map[String, AnyRef]("wildcard" -> simpleTypeName).asJava
+}
+
 case class OtherTypeDesc(typeName: String, typeParameters: Seq[TypeDesc] = Seq.empty) extends TypeDesc {
   override def simpleTypeName: String = typeName
   override def fullTypeName: String   = s"$simpleTypeName${typeParameters.map(_.simpleTypeName).mkString("[", ",", "]")}"
@@ -147,7 +155,11 @@ case class ConstructorDesc(parameters: Seq[ParameterTypeDesc]) extends Ast {
     Map[String, AnyRef]("parameters" -> parameters.map(_.asMap).asJava).asJava
 }
 
-case class MethodDesc(name: String, parameters: Seq[ParameterTypeDesc], returnType: TypeDesc, notNull: Boolean, throws: Boolean)
+case class MethodDesc(name: String,
+                      parameters: Seq[ParameterTypeDesc],
+                      returnType: TypeDesc,
+                      notNull: Boolean,
+                      throws: Boolean)
     extends Ast {
   override def asString: String =
     s"def $name(${parameters.map(_.asString).mkString(",")}): ${returnType.asString}"
