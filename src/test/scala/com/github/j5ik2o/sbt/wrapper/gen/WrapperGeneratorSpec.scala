@@ -26,7 +26,7 @@ class WrapperGeneratorSpec extends FreeSpec with Matchers with WrapperGenerator 
         classNameMapper = { _.simpleTypeName },
         parserConfigurationOpt = None
       )
-      getClassDescs(context) shouldBe Success(
+      getClassDescs(context)() shouldBe Success(
         Vector(
           ClassDesc(
             "Customer",
@@ -39,9 +39,10 @@ class WrapperGeneratorSpec extends FreeSpec with Matchers with WrapperGenerator 
                          Vector(ParameterTypeDesc("lastName", StringTypeDesc(), false)),
                          VoidTypeDesc(),
                          false,
-                         true),
-              MethodDesc("getFirstName", Vector(), StringTypeDesc(), true, false),
-              MethodDesc("getLastName", Vector(), StringTypeDesc(), false, false)
+                         true,
+                         false),
+              MethodDesc("getFirstName", Vector(), StringTypeDesc(), true, false, false),
+              MethodDesc("getLastName", Vector(), StringTypeDesc(), false, false, false)
             ),
             Paths.get("src/test/java/example/Customer.java"),
             Some("example")

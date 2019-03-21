@@ -181,11 +181,8 @@ trait WrapperGenerator {
     logger.debug(s"generateOne: start")
     val result: Try[Seq[File]] = for {
       cfg        <- createTemplateConfiguration(context.templateDirectory)
-      classDescs <- getClassDescs(context)
+      classDescs <- getClassDescs(context)(context.classFilter)
       files <- classDescs
-        .filter { classDesc =>
-          context.classFilter(classDesc)
-        }
         .find { v =>
           containClassName(className, v)
         }
@@ -231,11 +228,8 @@ trait WrapperGenerator {
     logger.debug(s"generateMany($classNames): start")
     val result = for {
       cfg        <- createTemplateConfiguration(context.templateDirectory)
-      classDescs <- getClassDescs(context)
+      classDescs <- getClassDescs(context)(context.classFilter)
       files <- classDescs
-        .filter { classDesc =>
-          context.classFilter(classDesc)
-        }
         .filter { classDesc =>
           classNames.exists { cn =>
             containClassName(cn, classDesc)
@@ -258,32 +252,35 @@ trait WrapperGenerator {
     } == className
   }
 
-  private[gen] def getClassDescs(context: GeneratorContext): Try[Seq[ClassDesc]] = Try {
-    context.logger.debug(s"getClassDescs($context): start")
-    def loop(path: Path): Seq[ClassDesc] = {
-      val files = Files.list(path).toScala
-      context.logger.debug(s"files = $files")
-      val r = files.filterNot(v => v.endsWith("package-info.java")).flatMap { path =>
-        if (path.toFile.isDirectory) { loop(path) } else {
-          context.logger.debug(s"path = $path")
-          val compileUnit = context.javaParser.parse(path)
-          val cpResult    = compileUnit.getResult
-          context.logger.debug(s"cpResult = $cpResult")
-          val resultOpt = OptionConverters.toScala(cpResult)
-          resultOpt
-            .map { result =>
-              val visitor = new Visitor()
-              result.accept(visitor, context)
-              Seq(visitor.result(path))
-            }.getOrElse(Seq.empty)
+  private[gen] def getClassDescs(context: GeneratorContext)(classFilter: ClassFilter = { _: ClassDesc =>
+    true
+  }): Try[Seq[ClassDesc]] =
+    Try {
+      context.logger.debug(s"getClassDescs($context): start")
+      def loop(path: Path): Seq[ClassDesc] = {
+        val files = Files.list(path).toScala
+        context.logger.debug(s"files = $files")
+        val r = files.filterNot(v => v.endsWith("package-info.java")).flatMap { path =>
+          if (path.toFile.isDirectory) { loop(path) } else {
+            context.logger.debug(s"path = $path")
+            val compileUnit = context.javaParser.parse(path)
+            val cpResult    = compileUnit.getResult
+            context.logger.debug(s"cpResult = $cpResult")
+            val resultOpt = OptionConverters.toScala(cpResult)
+            resultOpt
+              .map { result =>
+                val visitor = new Visitor()
+                result.accept(visitor, context)
+                Seq(visitor.result(path)).filter(classFilter)
+              }.getOrElse(Seq.empty)
+          }
         }
+        r
       }
+      val r = loop(context.inputDirectory.toPath)
+      context.logger.debug(s"getClassDescs: finished = $r")
       r
     }
-    val r = loop(context.inputDirectory.toPath)
-    context.logger.debug(s"getClassDescs: finished = $r")
-    r
-  }
 
   private[gen] def createTemplateConfiguration(
       templateDirectory: File
@@ -385,11 +382,8 @@ trait WrapperGenerator {
     logger.debug(s"generateAll: start")
     val result = for {
       cfg        <- createTemplateConfiguration(context.templateDirectory)
-      classDescs <- getClassDescs(context)
+      classDescs <- getClassDescs(context)(context.classFilter)
       files <- classDescs
-        .filter { classDesc =>
-          context.classFilter(classDesc)
-        }
         .foldLeft(Try(Seq.empty[File])) { (result, classDesc) =>
           for {
             r1 <- result
@@ -462,6 +456,7 @@ trait WrapperGenerator {
             Modifier.protectedModifier()
           )) {
         val obj        = n.asMethodDeclaration()
+        val isStatic   = obj.isStatic
         val isThrows   = obj.getThrownExceptions.isNonEmpty
         val methodName = obj.getName.asString()
         val params     = ArrayBuffer.empty[ParameterTypeDesc]
@@ -478,7 +473,7 @@ trait WrapperGenerator {
           obj.getAnnotations.asScala
             .map(_.getName.asString().toLowerCase()).exists(v => v == "nonnull" || v == "notnull")
         methodDescs.append(
-          MethodDesc(methodName, params.result.toVector, returnTypeName, notNull, isThrows)
+          MethodDesc(methodName, params.result.toVector, returnTypeName, notNull, isThrows, isStatic)
         )
       }
       super.visit(n, arg)

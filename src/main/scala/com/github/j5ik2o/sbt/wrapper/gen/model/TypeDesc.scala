@@ -93,13 +93,20 @@ case class WildcardTypeDesc(typeName: String) extends TypeDesc {
 case class OtherTypeDesc(typeName: String, typeParameters: Seq[TypeDesc] = Seq.empty) extends TypeDesc {
   override def simpleTypeName: String = typeName
   override def fullTypeName: String =
-    simpleTypeName + (if (typeParameters.nonEmpty) typeParameters.map(_.simpleTypeName).mkString(",") else "")
+    simpleTypeName + (if (typeParameters.nonEmpty) typeParameters.map(_.simpleTypeName).mkString("[", ",", "]") else "")
   override def asString: String = fullTypeName
   override def asMap: util.Map[String, AnyRef] =
     (Map[String, AnyRef](
-      "simpleTypeName" -> simpleTypeName,
-      "fullTypeName"   -> fullTypeName
-    ) ++ (if (typeParameters.nonEmpty) Map("typeParameters" -> typeParameters.map(_.asMap).asJava) else Map.empty)).asJava
+      "simpleTypeName"    -> simpleTypeName,
+      "fullTypeName"      -> fullTypeName,
+      "hasTypeParameters" -> false.asInstanceOf[java.lang.Boolean]
+    ) ++ (if (typeParameters.nonEmpty)
+            Map(
+              "hasTypeParameters" -> true.asInstanceOf[java.lang.Boolean],
+              "typeParameter"     -> typeParameters.map(_.asMap).head,
+              "typeParameters"    -> typeParameters.map(_.asMap).asJava
+            )
+          else Map.empty)).asJava
   override def asScalaDesc: TypeDesc = OtherTypeDesc(typeName, typeParameters.map(_.asScalaDesc))
 }
 
@@ -177,7 +184,8 @@ case class MethodDesc(name: String,
                       parameters: Seq[ParameterTypeDesc],
                       returnType: TypeDesc,
                       notNull: Boolean,
-                      throws: Boolean)
+                      throws: Boolean,
+                      static: Boolean)
     extends Ast {
   override def asString: String =
     s"def $name(${parameters.map(_.asString).mkString(",")}): ${returnType.asString}"
@@ -186,7 +194,8 @@ case class MethodDesc(name: String,
       "name"       -> name,
       "parameters" -> parameters.map(_.asMap).asJava,
       "returnType" -> returnType.asScalaDesc.asMap,
-      "notNull"    -> notNull.asInstanceOf[java.lang.Boolean]
+      "notNull"    -> notNull.asInstanceOf[java.lang.Boolean],
+      "static"     -> static.asInstanceOf[java.lang.Boolean]
     ).asJava
 }
 
