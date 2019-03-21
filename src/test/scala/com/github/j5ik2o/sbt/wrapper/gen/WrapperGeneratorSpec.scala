@@ -11,22 +11,22 @@ import scala.util.Success
 class WrapperGeneratorSpec extends FreeSpec with Matchers with WrapperGenerator {
   implicit val consoleLogger = ConsoleLogger()
   "WrapperGen" - {
-    "getClassDescs" in {
+    "getTypeDescs" in {
       val _classFilter = { _: TypeDesc =>
         true
       }
       val context = GeneratorContext(
         logger = consoleLogger,
-        classFilter = _classFilter,
+        typeFilter = _classFilter,
         typeDescMapper = WrapperGenerator.defaultTypeDescMapper,
         templateDirectory = null,
         templateNameMapper = null,
         inputDirectory = sbt.file("src/test/java/example"),
         outputDirectoryMapper = null,
-        classNameMapper = { _.simpleTypeName },
+        typeNameMapper = { _.simpleTypeName },
         parserConfigurationOpt = None
       )
-      getClassDescs(context)() shouldBe Success(
+      getTypeDescs(context)() shouldBe Success(
         Vector(
           ClassDesc(
             "Customer",
