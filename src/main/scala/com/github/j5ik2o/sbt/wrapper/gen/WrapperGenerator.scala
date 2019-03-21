@@ -5,9 +5,9 @@ import java.nio.file.{ Files, Path }
 
 import com.github.j5ik2o.sbt.wrapper.gen.model._
 import com.github.j5ik2o.sbt.wrapper.gen.util.Loan._
-import com.github.javaparser.ast.`type`.Type
+import com.github.javaparser.ast.`type`.{ Type, TypeParameter }
 import com.github.javaparser.ast.body._
-import com.github.javaparser.ast.visitor.VoidVisitorAdapter
+import com.github.javaparser.ast.visitor.{ GenericVisitorAdapter, VoidVisitorAdapter }
 import com.github.javaparser.ast.{ Modifier, PackageDeclaration }
 import com.github.javaparser.{ JavaParser, ParserConfiguration }
 import org.seasar.util.io.FileUtil
@@ -27,6 +27,7 @@ object WrapperGenerator {
   type TemplateNameMapper    = TypeDesc => String
   type OutputDirectoryMapper = TypeDesc => File
   type TypeNameMapper        = TypeDesc => String
+  type PackageNameMapper     = String => String
 
   val defaultTypeDescMapper: TypeDescMapper = {
     case ("String", _, _) =>
@@ -108,7 +109,8 @@ trait WrapperGenerator {
                 Seq(result)
             }
           }.getOrElse(Seq.empty)
-        typeMapper(typeName, ta, OptionConverters.toScala(t.getParentNode).map(_.toString))
+        val packageName = cit.accept(new PackageVisitor(), context)
+        typeMapper(typeName, ta, packageName)
       case t if t.isIntersectionType =>
         val it = t.asIntersectionType()
         context.logger.debug(s"it = $it")
@@ -160,6 +162,7 @@ trait WrapperGenerator {
     val inputDirectoryValue        = (inputSourceDirectory in scalaWrapperGen).value
     val outputDirectoryMapperValue = (outputSourceDirectoryMapper in scalaWrapperGen).value
     val typeNameMapperValue        = (typeNameMapper in scalaWrapperGen).value
+    val packageNameMapperValue     = (packageNameMapper in scalaWrapperGen).value
     val parserConfigurationValue   = (javaParserConfiguration in scalaWrapperGen).value
 
     val ctx: GeneratorContext = GeneratorContext(
@@ -171,6 +174,7 @@ trait WrapperGenerator {
       inputDirectory = inputDirectoryValue,
       outputDirectoryMapper = outputDirectoryMapperValue,
       typeNameMapper = typeNameMapperValue,
+      packageNameMapper = packageNameMapperValue,
       parserConfigurationOpt = parserConfigurationValue
     )
     _generateOne(ctx, className).get
@@ -261,26 +265,28 @@ trait WrapperGenerator {
 
   private[gen] def generateFile(context: GeneratorContext,
                                 cfg: freemarker.template.Configuration,
-                                classDesc: TypeDesc,
+                                typeDesc: TypeDesc,
                                 className: String,
                                 outputDirectory: File): Try[File] = {
     implicit val logger = context.logger
-    logger.debug(s"generateFile($cfg, $classDesc, $className, $outputDirectory): start")
-    val templateName = context.templateNameMapper(classDesc)
+    logger.debug(s"generateFile($cfg, $typeDesc, $className, $outputDirectory): start")
+    val templateName = context.templateNameMapper(typeDesc)
     val template     = cfg.getTemplate(templateName)
 
-    val ou = outputDirectory / classDesc.packageName.map(v => v.replace(".", "/")).getOrElse("")
+    val ou = outputDirectory / typeDesc.packageName
+      .map(context.packageNameMapper).map(v => v.replace(".", "/")).getOrElse("")
     context.logger.debug(s"ou = $ou")
     val file = createFile(ou, className)
     context.logger.debug(
-      s"classDesc = $classDesc, className = $className, templateName = $templateName, generate file = $file"
+      s"classDesc = $typeDesc, className = $className, templateName = $templateName, generate file = $file"
     )
 
     if (!ou.exists())
       IO.createDirectory(ou)
 
     val result = using(new FileWriter(file)) { writer =>
-      template.process(classDesc.asMap, writer)
+      logger.debug("typeDesc.asMap = " + typeDesc.asMap)
+      template.process(typeDesc.asMap, writer)
       writer.flush()
       Success(file)
     }
@@ -311,6 +317,7 @@ trait WrapperGenerator {
     val inputDirectoryValue        = (inputSourceDirectory in scalaWrapperGen).value
     val outputDirectoryMapperValue = (outputSourceDirectoryMapper in scalaWrapperGen).value
     val typeNameMapperValue        = (typeNameMapper in scalaWrapperGen).value
+    val packageNameMapperValue     = (packageNameMapper in scalaWrapperGen).value
     val parserConfigurationValue   = (javaParserConfiguration in scalaWrapperGen).value
 
     val context: GeneratorContext = GeneratorContext(
@@ -322,6 +329,7 @@ trait WrapperGenerator {
       inputDirectory = inputDirectoryValue,
       outputDirectoryMapper = outputDirectoryMapperValue,
       typeNameMapper = typeNameMapperValue,
+      packageNameMapper = packageNameMapperValue,
       parserConfigurationOpt = parserConfigurationValue
     )
     _generateMany(context, typeNames).get
@@ -361,6 +369,7 @@ trait WrapperGenerator {
     val inputDirectoryValue        = (inputSourceDirectory in scalaWrapperGen).value
     val outputDirectoryMapperValue = (outputSourceDirectoryMapper in scalaWrapperGen).value
     val typeNameMapperValue        = (typeNameMapper in scalaWrapperGen).value
+    val packageNameMapperValue     = (packageNameMapper in scalaWrapperGen).value
     val parserConfigurationValue   = (javaParserConfiguration in scalaWrapperGen).value
 
     val context: GeneratorContext = GeneratorContext(
@@ -372,6 +381,7 @@ trait WrapperGenerator {
       inputDirectory = inputDirectoryValue,
       outputDirectoryMapper = outputDirectoryMapperValue,
       typeNameMapper = typeNameMapperValue,
+      packageNameMapper = packageNameMapperValue,
       parserConfigurationOpt = parserConfigurationValue
     )
     _generateAll(context).get
@@ -381,9 +391,9 @@ trait WrapperGenerator {
     implicit val logger = context.logger
     logger.debug(s"generateAll: start")
     val result = for {
-      cfg        <- createTemplateConfiguration(context.templateDirectory)
-      classDescs <- getTypeDescs(context)(context.typeFilter)
-      files <- classDescs
+      cfg       <- createTemplateConfiguration(context.templateDirectory)
+      typeDescs <- getTypeDescs(context)(context.typeFilter)
+      files <- typeDescs
         .foldLeft(Try(Seq.empty[File])) { (result, classDesc) =>
           for {
             r1 <- result
@@ -403,8 +413,19 @@ trait WrapperGenerator {
                               inputDirectory: File,
                               outputDirectoryMapper: OutputDirectoryMapper,
                               typeNameMapper: TypeNameMapper,
+                              packageNameMapper: PackageNameMapper,
                               parserConfigurationOpt: Option[ParserConfiguration]) {
     val javaParser = parserConfigurationOpt.map(pc => new JavaParser(pc)).getOrElse(new JavaParser())
+  }
+
+  class PackageVisitor extends GenericVisitorAdapter[Option[String], RESULT] {
+    override def visit(n: PackageDeclaration, arg: RESULT): Option[String] = {
+      super.visit(n, arg)
+      OptionConverters
+        .toScala(n.getName.getQualifier).map { q =>
+          q.asString() + "." + n.getName.getIdentifier
+        }.orElse(Some(n.getName.getIdentifier))
+    }
   }
 
   class Visitor extends VoidVisitorAdapter[RESULT] {
@@ -415,13 +436,14 @@ trait WrapperGenerator {
     private var constructorDesc: ConstructorDesc = _
     private var enum: Boolean                    = false
     private var entries: Map[String, String]     = Map.empty
+    private var static: Boolean                  = false
 
     def result(path: Path): TypeDesc = {
       require(typeName != null)
       val result = if (enum) {
         EnumDesc(typeName, entries, packageName)
       } else {
-        ClassDesc(typeName, constructorDesc, methodDescs.result.toVector, path, packageName)
+        ClassDesc(typeName, constructorDesc, methodDescs.result.toVector, path, static, packageName)
       }
       result
     }
@@ -436,13 +458,17 @@ trait WrapperGenerator {
     }
 
     override def visit(n: PackageDeclaration, arg: RESULT): Unit = {
-      packageName = Some(n.getName.getIdentifier)
+      packageName = OptionConverters
+        .toScala(n.getName.getQualifier).map { q =>
+          q.asString() + "." + n.getName.getIdentifier
+        }.orElse(Some(n.getName.getIdentifier))
       super.visit(n, arg)
     }
 
     override def visit(n: ClassOrInterfaceDeclaration, arg: RESULT): Unit = {
       val name = n.asClassOrInterfaceDeclaration().getName
       typeName = name.asString()
+      static = n.getModifiers.contains(Modifier.staticModifier())
       super.visit(n, arg)
     }
 

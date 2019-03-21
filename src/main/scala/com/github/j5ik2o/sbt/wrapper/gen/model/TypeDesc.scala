@@ -215,16 +215,21 @@ case class MethodDesc(name: String,
 
 case class EnumDesc(simpleTypeName: String, entries: Map[String, String], packageName: Option[String])
     extends TypeDesc {
-  override def fullTypeName: String            = simpleTypeName
-  override def asScalaDesc: TypeDesc           = this
-  override def asString: String                = s"enum $simpleTypeName"
-  override def asMap: util.Map[String, AnyRef] = Map[String, AnyRef]("" -> "").asJava
+  override def fullTypeName: String  = simpleTypeName
+  override def asScalaDesc: TypeDesc = this
+  override def asString: String      = s"enum $simpleTypeName"
+  override def asMap: util.Map[String, AnyRef] =
+    (Map[String, AnyRef]("simpleTypeName" -> simpleTypeName,
+                         "fullTypeName"   -> fullTypeName,
+                         "entries"        -> entries.asJava) ++
+    (if (packageName.nonEmpty) Map("packageName" -> packageName.get) else Map.empty)).asJava
 }
 
 case class ClassDesc(simpleTypeName: String,
                      constructor: ConstructorDesc,
                      methods: Seq[MethodDesc],
                      path: Path,
+                     static: Boolean,
                      packageName: Option[String] = None)
     extends TypeDesc {
   override def fullTypeName: String = simpleTypeName
@@ -236,6 +241,7 @@ case class ClassDesc(simpleTypeName: String,
   override def asMap: util.Map[String, AnyRef] =
     (Map[String, AnyRef]("simpleTypeName" -> simpleTypeName,
                          "fullTypeName"   -> fullTypeName,
+                         "static"         -> static.asInstanceOf[java.lang.Boolean],
                          "methods"        -> methods.map(_.asMap).asJava) ++
     (if (packageName.nonEmpty) Map("packageName" -> packageName.get) else Map.empty)).asJava
   override def asScalaDesc: TypeDesc = this

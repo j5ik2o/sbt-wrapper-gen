@@ -23,6 +23,7 @@ object SbtWrapperGenPlugin extends AutoPlugin with WrapperGenerator {
       (sourceManaged in Compile).value
     },
     typeNameMapper in scalaWrapperGen := { _.simpleTypeName },
+    packageNameMapper in scalaWrapperGen := { identity },
     javaParserConfiguration in scalaWrapperGen := None,
     typeDescFilter in scalaWrapperGen := { _ =>
       true
