@@ -142,7 +142,7 @@ trait WrapperGenerator {
         val wt = t.asWildcardType()
         context.logger.debug(s"wt = $wt")
         OptionConverters.toScala(wt.getExtendedType).foreach { rt =>
-          context.logger.info("tw.extended" + rt.toString)
+          context.logger.debug("wt.extended" + rt.toString)
         }
         null
     }
