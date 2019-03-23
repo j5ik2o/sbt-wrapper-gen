@@ -24,15 +24,18 @@ class WrapperGeneratorSpec extends FreeSpec with Matchers with WrapperGenerator 
         inputDirectory = sbt.file("src/test/java/example"),
         outputDirectoryMapper = null,
         typeNameMapper = { _.simpleTypeName },
+        packageNameMapper = { identity },
         parserConfigurationOpt = None
       )
       getTypeDescs(context)() shouldBe Success(
         Vector(
           ClassDesc(
             "Customer",
-            ConstructorDesc(
-              Vector(ParameterTypeDesc("firstName", StringTypeDesc(), false),
-                     ParameterTypeDesc("lastName", StringTypeDesc(), false))
+            Some(
+              ConstructorDesc(
+                Vector(ParameterTypeDesc("firstName", StringTypeDesc(), false),
+                       ParameterTypeDesc("lastName", StringTypeDesc(), false))
+              )
             ),
             Vector(
               MethodDesc("setLastName",
@@ -44,7 +47,11 @@ class WrapperGeneratorSpec extends FreeSpec with Matchers with WrapperGenerator 
               MethodDesc("getFirstName", Vector(), StringTypeDesc(), true, false, false),
               MethodDesc("getLastName", Vector(), StringTypeDesc(), false, false, false)
             ),
+            Vector(FieldDesc("firstName", StringTypeDesc(), false, false),
+                   FieldDesc("lastName", StringTypeDesc(), false, false)),
             Paths.get("src/test/java/example/Customer.java"),
+            false,
+            false,
             Some("example")
           )
         )

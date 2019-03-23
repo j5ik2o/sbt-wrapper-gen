@@ -20,7 +20,7 @@ trait SbtWrapperGenKeys {
 
   val generateOne  = inputKey[Seq[File]]("generate-one task")
   val generateMany = inputKey[Seq[File]]("generate-many task")
-  val generateAll  = inputKey[Seq[File]]("generate-all task")
+  val generateAll  = taskKey[Seq[File]]("generate-all task")
 
 }
 

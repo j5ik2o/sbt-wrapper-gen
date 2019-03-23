@@ -5,12 +5,12 @@ import java.nio.file.{ Files, Path }
 
 import com.github.j5ik2o.sbt.wrapper.gen.model._
 import com.github.j5ik2o.sbt.wrapper.gen.util.Loan._
-import com.github.javaparser.ast.`type`.{ Type, TypeParameter }
+import com.github.javaparser.ast.Modifier.Keyword
+import com.github.javaparser.ast.`type`.Type
 import com.github.javaparser.ast.body._
 import com.github.javaparser.ast.visitor.{ GenericVisitorAdapter, VoidVisitorAdapter }
 import com.github.javaparser.ast.{ Modifier, PackageDeclaration }
 import com.github.javaparser.{ JavaParser, ParserConfiguration }
-import org.seasar.util.io.FileUtil
 import sbt.Keys._
 import sbt.complete.Parser
 import sbt.{ Def, File, _ }
@@ -30,16 +30,6 @@ object WrapperGenerator {
   type PackageNameMapper     = String => String
 
   val defaultTypeDescMapper: TypeDescMapper = {
-    case ("String", _, _) =>
-      StringTypeDesc()
-    case ("Array", Seq(valueType), _) =>
-      ArrayTypeDesc(valueType)
-    case ("List", Seq(valueType), _) =>
-      JavaListTypeDesc(valueType)
-    case ("Map", Seq(keyType, valueType), _) =>
-      JavaMapTypeDesc(keyType, valueType)
-    case ("CompletableFuture", Seq(paramType), _) =>
-      CompletableFutureDesc(paramType)
     case ("int", _, _) =>
       PrimitiveTypeDesc(PrimitiveType.INT)
     case ("Integer", _, _) =>
@@ -72,6 +62,20 @@ object WrapperGenerator {
       PrimitiveTypeDesc(PrimitiveType.FLOAT)
     case ("Float", _, _) =>
       PrimitiveTypeDesc(PrimitiveType.FLOAT)
+    case ("String", _, _) =>
+      StringTypeDesc()
+    case ("void", _, _) =>
+      VoidTypeDesc()
+    case ("Void", _, _) =>
+      VoidTypeDesc()
+    case ("Array", Seq(valueType), _) =>
+      ArrayTypeDesc(valueType)
+    case ("List", Seq(valueType), _) =>
+      JavaListTypeDesc(valueType)
+    case ("Map", Seq(keyType, valueType), _) =>
+      JavaMapTypeDesc(keyType, valueType)
+    case ("CompletableFuture", Seq(paramType), _) =>
+      CompletableFutureDesc(paramType)
     case (other, paramTypes, packageName) =>
       OtherTypeDesc(other, paramTypes, packageName)
   }
@@ -212,19 +216,21 @@ trait WrapperGenerator {
       context.logger.debug(s"getTypeDescs($context): start")
       def loop(path: Path): Seq[TypeDesc] = {
         val files = Files.list(path).toScala
-        context.logger.debug(s"files = $files")
-        val r = files.filterNot(v => v.endsWith("package-info.java")).flatMap { path =>
+        //context.logger.debug(s"files = $files")
+        val r = files.filterNot(_.endsWith("package-info.java")).flatMap { path =>
           if (path.toFile.isDirectory) { loop(path) } else {
             context.logger.debug(s"path = $path")
             val compileUnit = context.javaParser.parse(path)
             val cpResult    = compileUnit.getResult
-            context.logger.debug(s"cpResult = $cpResult")
+            // context.logger.debug(s"cpResult = $cpResult")
             val resultOpt = OptionConverters.toScala(cpResult)
             resultOpt
               .map { result =>
                 val visitor = new Visitor()
                 result.accept(visitor, context)
-                Seq(visitor.result(path)).filter(typeFilter)
+                val typeDesc = visitor.result(path)
+                // context.logger.debug(s"typeDesc: ${typeDesc.simpleTypeName}, ${typeDesc}")
+                Seq(typeDesc).filter(typeFilter)
               }.getOrElse(Seq.empty)
           }
         }
@@ -286,11 +292,11 @@ trait WrapperGenerator {
 
     val result = using(new FileWriter(file)) { writer =>
       logger.debug("typeDesc.asMap = " + typeDesc.asMap)
-      template.process(typeDesc.asMap, writer)
+      template.process(typeDesc.asScalaDesc.asMap, writer)
       writer.flush()
       Success(file)
     }
-    logger.debug(FileUtil.readText(file))
+    // logger.debug(FileUtil.readText(file))
     logger.debug(s"generateFile: finished = $result")
     result
   }
@@ -418,6 +424,13 @@ trait WrapperGenerator {
     val javaParser = parserConfigurationOpt.map(pc => new JavaParser(pc)).getOrElse(new JavaParser())
   }
 
+  class ClassVisitor extends GenericVisitorAdapter[String, RESULT] {
+    override def visit(n: ClassOrInterfaceDeclaration, arg: RESULT): String = {
+      super.visit(n, arg)
+      n.getName.asString
+    }
+  }
+
   class PackageVisitor extends GenericVisitorAdapter[Option[String], RESULT] {
     override def visit(n: PackageDeclaration, arg: RESULT): Option[String] = {
       super.visit(n, arg)
@@ -430,66 +443,124 @@ trait WrapperGenerator {
 
   class Visitor extends VoidVisitorAdapter[RESULT] {
 
-    private val methodDescs                      = ArrayBuffer.empty[MethodDesc]
-    private var typeName: String                 = _
-    private var packageName: Option[String]      = None
-    private var constructorDesc: ConstructorDesc = _
-    private var enum: Boolean                    = false
-    private var entries: Map[String, String]     = Map.empty
-    private var static: Boolean                  = false
+    private val methodDescs                              = ArrayBuffer.empty[MethodDesc]
+    private val fieldDescs                               = ArrayBuffer.empty[FieldDesc]
+    private var typeName: String                         = _
+    private var packageName: Option[String]              = None
+    private var constructorDesc: Option[ConstructorDesc] = None
+    private var enum: Boolean                            = false
+    private var entries: Map[String, String]             = Map.empty
+    private var isStatic: Boolean                        = false
+    private var isAbstract: Boolean                      = false
+
+    private var counter = 0L
 
     def result(path: Path): TypeDesc = {
-      require(typeName != null)
+      require(typeName != null, "typeName is null")
       val result = if (enum) {
         EnumDesc(typeName, entries, packageName)
       } else {
-        ClassDesc(typeName, constructorDesc, methodDescs.result.toVector, path, static, packageName)
+        ClassDesc(typeName,
+                  constructorDesc,
+                  methodDescs.result.toVector,
+                  fieldDescs.result.toVector,
+                  path,
+                  isAbstract,
+                  isStatic,
+                  packageName)
       }
       result
     }
 
+    override def visit(n: FieldDeclaration, arg: RESULT): Unit = {
+      arg.logger.debug(s"counter = ${counter}, ${n}")
+      counter += 1
+      val currentTypeName = n.getParentNode.get.accept(new ClassVisitor(), arg)
+      if (currentTypeName == typeName) {
+        val isStatic = n.getModifiers.asScala.exists {
+          _.getKeyword == Keyword.STATIC
+        }
+        if (n.getModifiers.asScala.exists {
+              _.getKeyword == Keyword.PRIVATE
+            }) {
+          n.getVariables.asScala.foreach { v =>
+            val n = v.getName.asString()
+            val t = parseType(arg, v.getType, arg.typeDescMapper)
+            val notNull = v.getType.getAnnotations.asScala
+              .map(_.getName.asString().toLowerCase()).exists(v => v == "nonnull" || v == "notnull")
+            fieldDescs.append(FieldDesc(n, t, notNull, isStatic))
+          }
+        }
+      }
+      super.visit(n, arg)
+    }
+
     override def visit(n: EnumDeclaration, arg: RESULT): Unit = {
-      enum = true
-      typeName = n.getName.getIdentifier
-      entries = n.getEntries.asScala.map { e =>
-        (e.getName.asString(), e.getArguments.get(0).toString)
-      }.toMap
+      arg.logger.debug(s"counter = ${counter}, ${n}")
+      counter += 1
+      if (typeName == null) {
+        enum = true
+        typeName = n.getName.getIdentifier
+        entries = n.getEntries.asScala.map { e =>
+          (e.getName.asString(), e.getArguments.get(0).toString)
+        }.toMap
+      }
       super.visit(n, arg)
     }
 
     override def visit(n: PackageDeclaration, arg: RESULT): Unit = {
-      packageName = OptionConverters
-        .toScala(n.getName.getQualifier).map { q =>
-          q.asString() + "." + n.getName.getIdentifier
-        }.orElse(Some(n.getName.getIdentifier))
+      arg.logger.debug(s"counter = ${counter}, ${n}")
+      counter += 1
+      if (packageName.isEmpty) {
+        packageName = OptionConverters
+          .toScala(n.getName.getQualifier).map { q =>
+            q.asString() + "." + n.getName.getIdentifier
+          }.orElse(Some(n.getName.getIdentifier))
+      }
       super.visit(n, arg)
     }
 
     override def visit(n: ClassOrInterfaceDeclaration, arg: RESULT): Unit = {
-      val name = n.asClassOrInterfaceDeclaration().getName
-      typeName = name.asString()
-      static = n.getModifiers.contains(Modifier.staticModifier())
+      arg.logger.debug(s"counter = ${counter}, ${n}")
+      counter += 1
+      if (typeName == null) {
+        isStatic = n.getModifiers.contains(Modifier.staticModifier())
+        isAbstract = n.getModifiers.contains(Modifier.abstractModifier())
+        val name = n.asClassOrInterfaceDeclaration().getName
+        typeName = name.asString()
+      }
       super.visit(n, arg)
     }
 
     override def visit(n: ConstructorDeclaration, arg: RESULT): Unit = {
-      val params = ArrayBuffer.empty[ParameterTypeDesc]
-      n.getParameters.asScala.foreach { v =>
-        val pName = v.getName
-        val pType = v.getType
-        val notNull = pType.getAnnotations.asScala
-          .map(_.getName.asString().toLowerCase()).exists(v => v == "nonnull" || v == "notnull")
-        val typeDesc = parseType(arg, pType, arg.typeDescMapper)
-        params.append(ParameterTypeDesc(pName.asString(), typeDesc, notNull))
+      arg.logger.debug(s"counter = ${counter}, ${n}")
+      counter += 1
+      if (constructorDesc == None) {
+        val params = ArrayBuffer.empty[ParameterTypeDesc]
+        n.getParameters.asScala.foreach { v =>
+          val pName = v.getName
+          val pType = v.getType
+          val notNull = pType.getAnnotations.asScala
+            .map(_.getName.asString().toLowerCase()).exists(v => v == "nonnull" || v == "notnull")
+          val typeDesc = parseType(arg, pType, arg.typeDescMapper)
+          params.append(ParameterTypeDesc(pName.asString(), typeDesc, notNull))
+        }
+        constructorDesc = Some(ConstructorDesc(params.result.toVector))
       }
-      constructorDesc = ConstructorDesc(params.result.toVector)
       super.visit(n, arg)
     }
 
     override def visit(n: MethodDeclaration, arg: RESULT): Unit = {
-      if (!n.getModifiers.contains(Modifier.privateModifier()) && !n.getModifiers.contains(
-            Modifier.protectedModifier()
-          )) {
+      arg.logger.debug(s"counter = ${counter}, ${n}")
+      counter += 1
+
+      val currentTypeName = n.getParentNode.get.accept(new ClassVisitor(), arg)
+      // arg.logger.debug(s"currentTypeName = ${currentTypeName}, $typeName, counter = $counter")
+
+      if (currentTypeName == typeName && !n.getModifiers.contains(Modifier.privateModifier()) && !n.getModifiers
+            .contains(
+              Modifier.protectedModifier()
+            )) {
         val obj        = n.asMethodDeclaration()
         val isStatic   = obj.isStatic
         val isThrows   = obj.getThrownExceptions.isNonEmpty
@@ -513,6 +584,7 @@ trait WrapperGenerator {
       }
       super.visit(n, arg)
     }
+
   }
 
 }
