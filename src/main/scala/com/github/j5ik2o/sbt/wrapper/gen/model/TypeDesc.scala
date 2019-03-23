@@ -249,7 +249,8 @@ case class EnumDesc(simpleTypeName: String, entries: Map[String, String], packag
   override def fullTypeName: String = simpleTypeName
   override def asString: String     = s"enum $simpleTypeName { $entries }"
   override def asMap: util.Map[String, AnyRef] =
-    (Map[String, AnyRef]("simpleTypeName" -> simpleTypeName,
+    (Map[String, AnyRef]("isEnum"         -> true.asInstanceOf[java.lang.Boolean],
+                         "simpleTypeName" -> simpleTypeName,
                          "fullTypeName"   -> fullTypeName,
                          "entries"        -> entries.asJava) ++
     (if (packageName.nonEmpty) Map("packageName" -> packageName.get) else Map.empty)).asJava
@@ -273,6 +274,7 @@ case class ClassDesc(simpleTypeName: String,
   }
   override def asMap: util.Map[String, AnyRef] =
     (Map[String, AnyRef](
+      "isClass"        -> true.asInstanceOf[java.lang.Boolean],
       "simpleTypeName" -> simpleTypeName,
       "fullTypeName"   -> fullTypeName,
       "abstract"       -> isAbstract.asInstanceOf[java.lang.Boolean],
