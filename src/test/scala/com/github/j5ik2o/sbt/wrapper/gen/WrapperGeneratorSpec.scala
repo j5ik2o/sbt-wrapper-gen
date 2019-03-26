@@ -26,7 +26,10 @@ class WrapperGeneratorSpec extends FreeSpec with Matchers with WrapperGenerator 
         typeNameMapper = { v =>
           Seq(v.simpleTypeName)
         },
-        packageNameMapper = { identity },
+        packageNameMapper = { v =>
+          require(v != null)
+          v
+        },
         parserConfigurationOpt = None
       )
       val r = getTypeDescs(context)()

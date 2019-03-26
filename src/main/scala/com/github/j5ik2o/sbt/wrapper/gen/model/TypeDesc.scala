@@ -151,6 +151,9 @@ case class WildcardTypeDesc(typeName: String) extends TypeDesc {
 
 case class OtherTypeDesc(typeName: String, typeParameterDescs: Seq[TypeDesc], override val packageName: Option[String])
     extends TypeDesc {
+  require(typeName != null, "typeName is null")
+  require(!typeParameterDescs.contains(null), "typeParameterDescs contains null")
+  require(packageName.fold(true)(_ != null), s"packageName value is null: $typeName")
   override type ThisScalaType = OtherTypeDesc
   override lazy val typeLevelCount: Int = 1 + typeParameterDescs.map(_.typeLevelCount).sum
   override lazy val fullTypeName: String =
