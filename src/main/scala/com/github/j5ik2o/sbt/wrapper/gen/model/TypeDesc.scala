@@ -226,7 +226,7 @@ case class ParameterTypeDesc(name: String, parameterTypeDesc: TypeDesc, notNull:
   super.asScalaMap ++ Map[String, AnyRef](
     "name"                    -> name,
     "parameterTypeDesc"       -> parameterTypeDesc.asJavaMap,
-    "bottomParameterTypeDesc" -> bottomValueTypeDesc(parameterTypeDesc),
+    "bottomParameterTypeDesc" -> bottomValueTypeDesc(parameterTypeDesc).asJavaMap,
     "notNull"                 -> notNull.asInstanceOf[java.lang.Boolean]
   )
   override lazy val asScalaDesc: ParameterTypeDesc = copy(parameterTypeDesc = parameterTypeDesc.asScalaDesc)
@@ -263,16 +263,23 @@ case class MethodDesc(name: String,
   override lazy val asString: String =
     s"lazy val $name(${parameterTypeDescs.map(_.asString).mkString(",")}): ${returnTypeDesc.asString}"
 
+  lazy val isGetter: Boolean        = name.startsWith("get")
+  lazy val isSetter: Boolean        = name.startsWith("set")
+  lazy val isBooleanGetter: Boolean = name.startsWith("is")
+
   override lazy val asScalaMap: Map[String, AnyRef] =
   super.asScalaMap ++ Map[String, AnyRef](
     "name"                    -> name,
     "parameterTypeDescs"      -> parameterTypeDescs.map(_.asJavaMap).asJava,
     "bottomParameterTypeDesc" -> parameterTypeDescs.map(v => bottomValueTypeDesc(v).asJavaMap).asJava,
     "returnTypeDesc"          -> returnTypeDesc.asJavaMap,
-    "bottomReturnTypeDesc"    -> bottomValueTypeDesc(returnTypeDesc),
+    "bottomReturnTypeDesc"    -> bottomValueTypeDesc(returnTypeDesc).asJavaMap,
     "notNull"                 -> notNull.asInstanceOf[java.lang.Boolean],
     "throws"                  -> throws.asInstanceOf[java.lang.Boolean],
-    "static"                  -> static.asInstanceOf[java.lang.Boolean]
+    "static"                  -> static.asInstanceOf[java.lang.Boolean],
+    "isGetter"                -> isGetter.asInstanceOf[java.lang.Boolean],
+    "isSetter"                -> isSetter.asInstanceOf[java.lang.Boolean],
+    "isBooleanGetter"         -> isBooleanGetter.asInstanceOf[java.lang.Boolean]
   )
 
   override lazy val asScalaDesc: MethodDesc =
@@ -315,9 +322,9 @@ case class ClassDesc(simpleTypeName: String,
                      constructor: Option[ConstructorDesc],
                      methods: Seq[MethodDesc],
                      fields: Seq[FieldDesc],
-                     path: Path,
                      isAbstract: Boolean,
                      isStatic: Boolean,
+                     path: Path,
                      override val packageName: Option[String] = None)
     extends TypeDesc {
   override type ThisScalaType = ClassDesc
@@ -333,7 +340,8 @@ case class ClassDesc(simpleTypeName: String,
     "abstract" -> isAbstract.asInstanceOf[java.lang.Boolean],
     "static"   -> isStatic.asInstanceOf[java.lang.Boolean],
     "methods"  -> methods.map(_.asJavaMap).asJava,
-    "fields"   -> fields.map(_.asJavaMap).asJava
+    "fields"   -> fields.map(_.asJavaMap).asJava,
+    "path"     -> path.toString
   )
   override lazy val asScalaDesc: ClassDesc =
     copy(

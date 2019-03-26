@@ -480,9 +480,9 @@ trait WrapperGenerator {
                   constructorDesc,
                   methodDescs.result.toVector,
                   fieldDescs.result.toVector,
-                  path,
                   isAbstract,
                   isStatic,
+                  path,
                   packageName)
       }
       result
