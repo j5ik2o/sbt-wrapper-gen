@@ -2,15 +2,16 @@ package com.github.j5ik2o.sbt.wrapper.gen
 
 import java.io.FileWriter
 import java.nio.file.{ Files, Path }
+import java.util.concurrent.atomic.AtomicBoolean
 
 import com.github.j5ik2o.sbt.wrapper.gen.model._
 import com.github.j5ik2o.sbt.wrapper.gen.util.Loan._
+import com.github.javaparser.ast.Modifier.Keyword
 import com.github.javaparser.ast.`type`.Type
 import com.github.javaparser.ast.body._
-import com.github.javaparser.ast.visitor.VoidVisitorAdapter
+import com.github.javaparser.ast.visitor.{ GenericVisitorAdapter, VoidVisitorAdapter }
 import com.github.javaparser.ast.{ Modifier, PackageDeclaration }
 import com.github.javaparser.{ JavaParser, ParserConfiguration }
-import org.seasar.util.io.FileUtil
 import sbt.Keys._
 import sbt.complete.Parser
 import sbt.{ Def, File, _ }
@@ -22,14 +23,52 @@ import scala.compat.java8.StreamConverters._
 import scala.util.{ Success, Try }
 
 object WrapperGenerator {
-  type ClassFilter           = ClassDesc => Boolean
+  type TypeFilter            = TypeDesc => Boolean
   type TypeDescMapper        = (String, Seq[TypeDesc]) => TypeDesc
-  type TemplateNameMapper    = ClassDesc => String
-  type OutputDirectoryMapper = ClassDesc => File
+  type TemplateNameMapper    = TypeDesc => String
+  type OutputDirectoryMapper = TypeDesc => File
+  type TypeNameMapper        = TypeDesc => Seq[String]
+  type PackageNameMapper     = String => String
 
   val defaultTypeDescMapper: TypeDescMapper = {
+    case ("int", _) =>
+      PrimitiveTypeDesc(PrimitiveType.INT)
+    case ("Integer", _) =>
+      PrimitiveTypeDesc(PrimitiveType.INT)
+    case ("long", _) =>
+      PrimitiveTypeDesc(PrimitiveType.LONG)
+    case ("Long", _) =>
+      PrimitiveTypeDesc(PrimitiveType.LONG)
+    case ("short", _) =>
+      PrimitiveTypeDesc(PrimitiveType.SHORT)
+    case ("Short", _) =>
+      PrimitiveTypeDesc(PrimitiveType.SHORT)
+    case ("boolean", _) =>
+      PrimitiveTypeDesc(PrimitiveType.BOOLEAN)
+    case ("Boolean", _) =>
+      PrimitiveTypeDesc(PrimitiveType.BOOLEAN)
+    case ("byte", _) =>
+      PrimitiveTypeDesc(PrimitiveType.BYTE)
+    case ("Byte", _) =>
+      PrimitiveTypeDesc(PrimitiveType.BYTE)
+    case ("char", _) =>
+      PrimitiveTypeDesc(PrimitiveType.CHAR)
+    case ("Char", _) =>
+      PrimitiveTypeDesc(PrimitiveType.CHAR)
+    case ("double", _) =>
+      PrimitiveTypeDesc(PrimitiveType.DOUBLE)
+    case ("Double", _) =>
+      PrimitiveTypeDesc(PrimitiveType.DOUBLE)
+    case ("float", _) =>
+      PrimitiveTypeDesc(PrimitiveType.FLOAT)
+    case ("Float", _) =>
+      PrimitiveTypeDesc(PrimitiveType.FLOAT)
     case ("String", _) =>
       StringTypeDesc()
+    case ("void", _) =>
+      VoidTypeDesc()
+    case ("Void", _) =>
+      VoidTypeDesc()
     case ("Array", Seq(valueType)) =>
       ArrayTypeDesc(valueType)
     case ("List", Seq(valueType)) =>
@@ -38,24 +77,8 @@ object WrapperGenerator {
       JavaMapTypeDesc(keyType, valueType)
     case ("CompletableFuture", Seq(paramType)) =>
       CompletableFutureDesc(paramType)
-    case ("Integer", _) =>
-      PrimitiveTypeDesc(PrimitiveType.INT)
-    case ("Log", _) =>
-      PrimitiveTypeDesc(PrimitiveType.LONG)
-    case ("Short", _) =>
-      PrimitiveTypeDesc(PrimitiveType.SHORT)
-    case ("Boolean", _) =>
-      PrimitiveTypeDesc(PrimitiveType.BOOLEAN)
-    case ("Byte", _) =>
-      PrimitiveTypeDesc(PrimitiveType.BYTE)
-    case ("Char", _) =>
-      PrimitiveTypeDesc(PrimitiveType.CHAR)
-    case ("Double", _) =>
-      PrimitiveTypeDesc(PrimitiveType.DOUBLE)
-    case ("Float", _) =>
-      PrimitiveTypeDesc(PrimitiveType.FLOAT)
     case (other, paramTypes) =>
-      OtherTypeDesc(other, paramTypes)
+      OtherTypeDesc(other, paramTypes, None)
   }
 }
 
@@ -72,34 +95,63 @@ trait WrapperGenerator {
 
   private val manyStringParser: Parser[Seq[String]] = token(Space ~> StringBasic, "java class name") +
 
-  def parseType(t: Type, typeMapper: TypeDescMapper): TypeDesc = {
+  def parseType(context: GeneratorContext, t: Type): TypeDesc = {
+    val typeMapper = context.typeDescMapper
     t match {
       case t if t.isArrayType =>
         val at        = t.asArrayType()
-        val paramType = parseType(at.getElementType, typeMapper)
+        val paramType = parseType(context, at.getElementType)
         typeMapper("Array", Seq(paramType))
       case t if t.isClassOrInterfaceType =>
         val cit      = t.asClassOrInterfaceType()
         val typeName = cit.getName.getIdentifier
         val ta = OptionConverters
           .toScala(cit.getTypeArguments).map { typeArguments =>
-            typeArguments.asScala.map { t =>
-              parseType(t, typeMapper)
+            typeArguments.asScala.flatMap { t =>
+              val result = parseType(context, t)
+              if (result == null)
+                Seq.empty
+              else
+                Seq(result)
             }
           }.getOrElse(Seq.empty)
         typeMapper(typeName, ta)
-      case t if t.isIntersectionType => null
+      case t if t.isIntersectionType =>
+        val it = t.asIntersectionType()
+        context.logger.debug(s"it = $it")
+        null
       case t if t.isPrimitiveType =>
         val pt       = t.asPrimitiveType()
         val typeName = pt.asString
         typeMapper(typeName, Seq.empty)
-      case t if t.isReferenceType => null
-      case t if t.isTypeParameter => null
-      case t if t.isUnionType     => null
-      case t if t.isUnknownType   => null
-      case t if t.isVarType       => null
-      case t if t.isVoidType      => VoidTypeDesc()
-      case t if t.isWildcardType  => null
+      case t if t.isReferenceType =>
+        val rt = t.asReferenceType()
+        context.logger.debug(s"rt = $rt")
+        null
+      case t if t.isTypeParameter =>
+        val tp = t.asTypeParameter()
+        context.logger.debug(s"tp = $tp")
+        null
+      case t if t.isUnionType =>
+        val ut = t.asUnionType()
+        context.logger.debug(s"ut1 = $ut")
+        null
+      case t if t.isUnknownType =>
+        val ut = t.asUnionType()
+        context.logger.debug(s"ut2 = $ut")
+        null
+      case t if t.isVarType =>
+        val vt = t.asVarType()
+        context.logger.debug(s"vt = $vt")
+        null
+      case t if t.isVoidType => VoidTypeDesc()
+      case t if t.isWildcardType =>
+        val wt = t.asWildcardType()
+        context.logger.debug(s"wt = $wt")
+        OptionConverters.toScala(wt.getExtendedType).foreach { rt =>
+          context.logger.debug("wt.extended" + rt.toString)
+        }
+        null
     }
   }
 
@@ -108,22 +160,26 @@ trait WrapperGenerator {
     implicit val logger = streams.value.log
     logger.info("sbt-wrapper-gen: generateOne task")
 
-    val classFilterValue           = (classDescFilter in scalaWrapperGen).value
+    val typeFilterValue            = (typeDescFilter in scalaWrapperGen).value
     val typeDescMapperValue        = (typeDescMapper in scalaWrapperGen).value
     val templateDirectoryValue     = (templateDirectory in scalaWrapperGen).value
     val templateNameMapperValue    = (templateNameMapper in scalaWrapperGen).value
     val inputDirectoryValue        = (inputSourceDirectory in scalaWrapperGen).value
     val outputDirectoryMapperValue = (outputSourceDirectoryMapper in scalaWrapperGen).value
+    val typeNameMapperValue        = (typeNameMapper in scalaWrapperGen).value
+    val packageNameMapperValue     = (packageNameMapper in scalaWrapperGen).value
     val parserConfigurationValue   = (javaParserConfiguration in scalaWrapperGen).value
 
     val ctx: GeneratorContext = GeneratorContext(
       logger = streams.value.log,
-      classFilter = classFilterValue,
+      typeFilter = typeFilterValue,
       typeDescMapper = typeDescMapperValue,
       templateDirectory = templateDirectoryValue,
       templateNameMapper = templateNameMapperValue,
       inputDirectory = inputDirectoryValue,
       outputDirectoryMapper = outputDirectoryMapperValue,
+      typeNameMapper = typeNameMapperValue,
+      packageNameMapper = packageNameMapperValue,
       parserConfigurationOpt = parserConfigurationValue
     )
     _generateOne(ctx, className).get
@@ -133,14 +189,11 @@ trait WrapperGenerator {
     implicit val logger = context.logger
     logger.debug(s"generateOne: start")
     val result: Try[Seq[File]] = for {
-      cfg        <- createTemplateConfiguration(context.templateDirectory)
-      classDescs <- getClassDescs(context)
-      files <- classDescs
-        .filter { classDesc =>
-          context.classFilter(classDesc)
-        }
+      cfg       <- createTemplateConfiguration(context.templateDirectory)
+      typeDescs <- getTypeDescs(context)(context.typeFilter)
+      files <- typeDescs
         .find { v =>
-          containClassName(className, v)
+          containTypeName(className, v)
         }
         .map { classDesc =>
           generateFiles(context, cfg, classDesc)
@@ -152,44 +205,45 @@ trait WrapperGenerator {
   }
 
   def generateManyTask: Def.Initialize[InputTask[Seq[File]]] = Def.inputTask {
-    val classNames      = manyStringParser.parsed
+    val typeNames       = manyStringParser.parsed
     implicit val logger = streams.value.log
     logger.info("sbt-wrapper-gen: generateOne task")
 
-    val classFilterValue           = (classDescFilter in scalaWrapperGen).value
+    val typeFilterValue            = (typeDescFilter in scalaWrapperGen).value
     val typeDescMapperValue        = (typeDescMapper in scalaWrapperGen).value
     val templateDirectoryValue     = (templateDirectory in scalaWrapperGen).value
     val templateNameMapperValue    = (templateNameMapper in scalaWrapperGen).value
     val inputDirectoryValue        = (inputSourceDirectory in scalaWrapperGen).value
     val outputDirectoryMapperValue = (outputSourceDirectoryMapper in scalaWrapperGen).value
+    val typeNameMapperValue        = (typeNameMapper in scalaWrapperGen).value
+    val packageNameMapperValue     = (packageNameMapper in scalaWrapperGen).value
     val parserConfigurationValue   = (javaParserConfiguration in scalaWrapperGen).value
 
     val context: GeneratorContext = GeneratorContext(
       logger = streams.value.log,
-      classFilter = classFilterValue,
+      typeFilter = typeFilterValue,
       typeDescMapper = typeDescMapperValue,
       templateDirectory = templateDirectoryValue,
       templateNameMapper = templateNameMapperValue,
       inputDirectory = inputDirectoryValue,
       outputDirectoryMapper = outputDirectoryMapperValue,
+      typeNameMapper = typeNameMapperValue,
+      packageNameMapper = packageNameMapperValue,
       parserConfigurationOpt = parserConfigurationValue
     )
-    _generateMany(context, classNames).get
+    _generateMany(context, typeNames).get
   }
 
   private[gen] def _generateMany(context: GeneratorContext, classNames: Seq[String]): Try[Seq[File]] = {
     implicit val logger = context.logger
     logger.debug(s"generateMany($classNames): start")
     val result = for {
-      cfg        <- createTemplateConfiguration(context.templateDirectory)
-      classDescs <- getClassDescs(context)
-      files <- classDescs
-        .filter { classDesc =>
-          context.classFilter(classDesc)
-        }
+      cfg       <- createTemplateConfiguration(context.templateDirectory)
+      typeDescs <- getTypeDescs(context)(context.typeFilter)
+      files <- typeDescs
         .filter { classDesc =>
           classNames.exists { cn =>
-            containClassName(cn, classDesc)
+            containTypeName(cn, classDesc)
           }
         }
         .foldLeft(Try(Seq.empty[File])) { (result, classDesc) =>
@@ -203,37 +257,54 @@ trait WrapperGenerator {
     result
   }
 
-  private def containClassName(className: String, classDescv: ClassDesc): Boolean = {
-    classDescv.simpleTypeName == className || classDescv.packageName.fold[String](classDescv.simpleTypeName) { p =>
-      s"$p.${classDescv.simpleTypeName}"
+  private def containTypeName(className: String, typeDesc: TypeDesc): Boolean = {
+    typeDesc.simpleTypeName == className || typeDesc.packageName.fold[String](typeDesc.simpleTypeName) { p =>
+      s"$p.${typeDesc.simpleTypeName}"
     } == className
   }
 
-  private[gen] def getClassDescs(context: GeneratorContext): Try[Seq[ClassDesc]] = Try {
-    context.logger.debug(s"getClassDescs($context): start")
-    def loop(path: Path): Seq[ClassDesc] = {
-      val files = Files.list(path).toScala
-      context.logger.debug(s"files = $files")
-      val r = files.filterNot(v => v.endsWith("package-info.java")).flatMap { path =>
-        if (path.toFile.isDirectory) { loop(path) } else {
-          context.logger.debug(s"path = $path")
-          val compileUnit = context.javaParser.parse(path)
-          val cpResult    = compileUnit.getResult
-          context.logger.debug(s"cpResult = $cpResult")
-          val resultOpt = OptionConverters.toScala(cpResult)
-          resultOpt
-            .map { result =>
-              val visitor = new Visitor()
-              result.accept(visitor, context)
-              Seq(visitor.result)
-            }.getOrElse(Seq.empty)
+//  private[gen] def getTypeDescs(context: GeneratorContext)(typeFilter: TypeFilter = { _: TypeDesc =>
+//    true
+//  }): Try[Seq[TypeDesc]] = {
+//    _getTypeDescs(context)().flatMap { result =>
+//      _getTypeDescs(context.copy(allTypeDesc = result.toSet))(typeFilter)
+//    }
+//  }
+
+  private[gen] def getTypeDescs(context: GeneratorContext)(typeFilter: TypeFilter = { _: TypeDesc =>
+    true
+  }): Try[Seq[TypeDesc]] = {
+    Try {
+      context.logger.debug(s"getTypeDescs($context): start")
+      def loop(path: Path): Seq[TypeDesc] = {
+        val files = Files.list(path).toScala
+        //context.logger.debug(s"files = $files")
+        val r = files.filterNot(_.endsWith("package-info.java")).flatMap { path =>
+          if (path.toFile.isDirectory) {
+            loop(path)
+          } else {
+            context.logger.debug(s"path = $path")
+            val compileUnit = context.javaParser.parse(path)
+            val cpResult    = compileUnit.getResult
+            // context.logger.debug(s"cpResult = $cpResult")
+            val resultOpt = OptionConverters.toScala(cpResult)
+            resultOpt
+              .map { result =>
+                val visitor = new Visitor()
+                result.accept(visitor, context)
+                val typeDesc = visitor.result(path)
+                // context.logger.debug(s"typeDesc: ${typeDesc.simpleTypeName}, ${typeDesc}")
+                Seq(typeDesc).filter(typeFilter)
+              }.getOrElse(Seq.empty)
+          }
         }
+        r
       }
+
+      val r = loop(context.inputDirectory.toPath)
+      context.logger.debug(s"getTypeDescs: finished = $r")
       r
     }
-    val r = loop(context.inputDirectory.toPath)
-    context.logger.debug(s"getClassDescs: finished = $r")
-    r
   }
 
   private[gen] def createTemplateConfiguration(
@@ -254,38 +325,51 @@ trait WrapperGenerator {
 
   private[gen] def generateFiles(context: GeneratorContext,
                                  cfg: freemarker.template.Configuration,
-                                 classDesc: ClassDesc): Try[Seq[File]] = {
+                                 typeDesc: TypeDesc): Try[Seq[File]] = {
     implicit val logger = context.logger
-    logger.debug(s"generateFiles($cfg, $classDesc): start")
-    val outputTargetDirectory = context.outputDirectoryMapper(classDesc)
-    val result                = generateFile(context, cfg, classDesc, classDesc.simpleTypeName, outputTargetDirectory).map(Seq(_))
+    logger.debug(s"generateFiles($cfg, $typeDesc): start")
+    val outputTargetDirectory = context.outputDirectoryMapper(typeDesc)
+    val typeNames             = context.typeNameMapper(typeDesc)
+    val result =
+      typeNames.foldLeft(Try(Seq.empty[File])) {
+        case (result, typeName) =>
+          for {
+            r <- result
+            e <- generateFile(context, cfg, typeDesc, typeName, outputTargetDirectory)
+          } yield r :+ e
+      }
     logger.debug(s"generateFiles: finished = $result")
     result
   }
 
   private[gen] def generateFile(context: GeneratorContext,
                                 cfg: freemarker.template.Configuration,
-                                classDesc: ClassDesc,
-                                className: String,
+                                typeDesc: TypeDesc,
+                                typeName: String,
                                 outputDirectory: File): Try[File] = {
     implicit val logger = context.logger
-    logger.debug(s"generateFile($cfg, $classDesc, $className, $outputDirectory): start")
-    val templateName = context.templateNameMapper(classDesc)
+    logger.debug(s"generateFile($cfg, $typeDesc, $typeName, $outputDirectory): start")
+    val templateName = context.templateNameMapper(typeDesc)
     val template     = cfg.getTemplate(templateName)
-    val file         = createFile(outputDirectory, className)
-    context.logger.info(
-      s"classDesc = $classDesc, className = $className, templateName = $templateName, generate file = $file"
+
+    val ou = outputDirectory / typeDesc.packageName
+      .map(context.packageNameMapper).map(v => v.replace(".", "/")).getOrElse("")
+    context.logger.debug(s"ou = $ou")
+    val file = createFile(ou, typeName)
+    context.logger.debug(
+      s"classDesc = $typeDesc, className = $typeName, templateName = $templateName, generate file = $file"
     )
 
-    if (!outputDirectory.exists())
-      IO.createDirectory(outputDirectory)
+    if (!ou.exists())
+      IO.createDirectory(ou)
 
     val result = using(new FileWriter(file)) { writer =>
-      template.process(classDesc.asMap, writer)
+      logger.debug("typeDesc.asMap = " + typeDesc.asJavaMap)
+      template.process(typeDesc.asScalaDesc.asJavaMap, writer)
       writer.flush()
       Success(file)
     }
-    logger.debug(FileUtil.readText(file))
+    // logger.debug(FileUtil.readText(file))
     logger.debug(s"generateFile: finished = $result")
     result
   }
@@ -295,6 +379,7 @@ trait WrapperGenerator {
   ): File = {
     logger.debug(s"createFile($outputDirectory, $className): start")
     val file = outputDirectory / (className + ".scala")
+
     logger.debug(s"createFile: finished = $file")
     file
   }
@@ -303,22 +388,26 @@ trait WrapperGenerator {
     implicit val logger = streams.value.log
     logger.info("sbt-wrapper-gen: generateAll task")
 
-    val classDescToBoolean         = (classDescFilter in scalaWrapperGen).value
+    val typeDescToBoolean          = (typeDescFilter in scalaWrapperGen).value
     val typeDescMapperValue        = (typeDescMapper in scalaWrapperGen).value
     val templateDirectoryValue     = (templateDirectory in scalaWrapperGen).value
     val templateNameMapperValue    = (templateNameMapper in scalaWrapperGen).value
     val inputDirectoryValue        = (inputSourceDirectory in scalaWrapperGen).value
     val outputDirectoryMapperValue = (outputSourceDirectoryMapper in scalaWrapperGen).value
+    val typeNameMapperValue        = (typeNameMapper in scalaWrapperGen).value
+    val packageNameMapperValue     = (packageNameMapper in scalaWrapperGen).value
     val parserConfigurationValue   = (javaParserConfiguration in scalaWrapperGen).value
 
     val context: GeneratorContext = GeneratorContext(
       logger = streams.value.log,
-      classFilter = classDescToBoolean,
+      typeFilter = typeDescToBoolean,
       typeDescMapper = typeDescMapperValue,
       templateDirectory = templateDirectoryValue,
       templateNameMapper = templateNameMapperValue,
       inputDirectory = inputDirectoryValue,
       outputDirectoryMapper = outputDirectoryMapperValue,
+      typeNameMapper = typeNameMapperValue,
+      packageNameMapper = packageNameMapperValue,
       parserConfigurationOpt = parserConfigurationValue
     )
     _generateAll(context).get
@@ -328,12 +417,9 @@ trait WrapperGenerator {
     implicit val logger = context.logger
     logger.debug(s"generateAll: start")
     val result = for {
-      cfg        <- createTemplateConfiguration(context.templateDirectory)
-      classDescs <- getClassDescs(context)
-      files <- classDescs
-        .filter { classDesc =>
-          context.classFilter(classDesc)
-        }
+      cfg       <- createTemplateConfiguration(context.templateDirectory)
+      typeDescs <- getTypeDescs(context)(context.typeFilter)
+      files <- typeDescs
         .foldLeft(Try(Seq.empty[File])) { (result, classDesc) =>
           for {
             r1 <- result
@@ -346,56 +432,166 @@ trait WrapperGenerator {
   }
 
   case class GeneratorContext(logger: Logger,
-                              classFilter: ClassFilter,
+                              typeFilter: TypeFilter,
                               typeDescMapper: TypeDescMapper,
                               templateDirectory: File,
                               templateNameMapper: TemplateNameMapper,
                               inputDirectory: File,
                               outputDirectoryMapper: OutputDirectoryMapper,
-                              parserConfigurationOpt: Option[ParserConfiguration]) {
+                              typeNameMapper: TypeNameMapper,
+                              packageNameMapper: PackageNameMapper,
+                              parserConfigurationOpt: Option[ParserConfiguration],
+                              allTypeDesc: Set[TypeDesc] = Set.empty) {
     val javaParser = parserConfigurationOpt.map(pc => new JavaParser(pc)).getOrElse(new JavaParser())
+  }
+
+  class ClassVisitor extends GenericVisitorAdapter[String, RESULT] {
+    override def visit(n: ClassOrInterfaceDeclaration, arg: RESULT): String = {
+      super.visit(n, arg)
+      n.getName.asString
+    }
+  }
+
+  class PackageVisitor extends GenericVisitorAdapter[Option[String], RESULT] {
+    override def visit(n: PackageDeclaration, arg: RESULT): Option[String] = {
+      super.visit(n, arg)
+      OptionConverters
+        .toScala(n.getName.getQualifier).map { q =>
+          q.asString() + "." + n.getName.getIdentifier
+        }.orElse(Some(n.getName.getIdentifier))
+    }
+  }
+
+  class EnumVisitor(exist: AtomicBoolean) extends VoidVisitorAdapter[RESULT] {
+
+    override def visit(n: EnumDeclaration, arg: RESULT): Unit = {
+      exist.set(true)
+      super.visit(n, arg)
+    }
   }
 
   class Visitor extends VoidVisitorAdapter[RESULT] {
 
-    private val methodDescs                      = ArrayBuffer.empty[MethodDesc]
-    private var className: String                = _
-    private var packageName: Option[String]      = None
-    private var constructorDesc: ConstructorDesc = _
+    private val methodDescs                              = ArrayBuffer.empty[MethodDesc]
+    private val fieldDescs                               = ArrayBuffer.empty[FieldDesc]
+    private var typeName: String                         = _
+    private var packageName: Option[String]              = None
+    private var constructorDesc: Option[ConstructorDesc] = None
+    private var enum: Boolean                            = false
+    private var entries: Map[String, Seq[String]]        = Map.empty
+    private var isStatic: Boolean                        = false
+    private var isAbstract: Boolean                      = false
 
-    def result: ClassDesc = {
-      val result = ClassDesc(className, constructorDesc, methodDescs.result.toVector, packageName)
+    private var counter = 0L
+
+    def result(path: Path): TypeDesc = {
+      require(typeName != null, "typeName is null")
+      val result = if (enum) {
+        EnumDesc(typeName, entries, packageName)
+      } else {
+        ClassDesc(typeName,
+                  constructorDesc,
+                  methodDescs.result.toVector,
+                  fieldDescs.result.toVector,
+                  isAbstract,
+                  isStatic,
+                  path,
+                  packageName)
+      }
       result
     }
 
+    override def visit(n: FieldDeclaration, arg: RESULT): Unit = {
+      arg.logger.debug(s"counter = ${counter}, ${n}")
+      counter += 1
+      val currentTypeName = n.getParentNode.get.accept(new ClassVisitor(), arg)
+      if (currentTypeName == typeName) {
+        val isStatic = n.getModifiers.asScala.exists {
+          _.getKeyword == Keyword.STATIC
+        }
+        if (n.getModifiers.asScala.exists {
+              _.getKeyword == Keyword.PRIVATE
+            }) {
+          n.getVariables.asScala.foreach { v =>
+            val n = v.getName.asString()
+            val t = parseType(arg, v.getType)
+            val notNull = v.getType.getAnnotations.asScala
+              .map(_.getName.asString().toLowerCase()).exists(v => v == "nonnull" || v == "notnull")
+            fieldDescs.append(FieldDesc(n, t, notNull, isStatic))
+          }
+        }
+      }
+      super.visit(n, arg)
+    }
+
+    override def visit(n: EnumDeclaration, arg: RESULT): Unit = {
+      arg.logger.debug(s"counter = ${counter}, ${n}")
+      counter += 1
+      if (typeName == null) {
+        enum = true
+        typeName = n.getName.getIdentifier
+        entries = n.getEntries.asScala.map { e =>
+          (e.getName.asString(), e.getArguments.asScala.map(_.toString))
+        }.toMap
+      }
+      super.visit(n, arg)
+    }
+
     override def visit(n: PackageDeclaration, arg: RESULT): Unit = {
-      packageName = Some(n.getName.getIdentifier)
+      arg.logger.debug(s"counter = ${counter}, ${n}")
+      counter += 1
+      if (packageName.isEmpty) {
+        packageName = OptionConverters
+          .toScala(n.getName.getQualifier).map { q =>
+            q.asString() + "." + n.getName.getIdentifier
+          }.orElse(Some(n.getName.getIdentifier))
+      }
       super.visit(n, arg)
     }
 
     override def visit(n: ClassOrInterfaceDeclaration, arg: RESULT): Unit = {
-      val name = n.asClassOrInterfaceDeclaration().getName
-      className = name.asString()
+      arg.logger.debug(s"counter = ${counter}, ${n}")
+      counter += 1
+      if (typeName == null) {
+        isStatic = n.getModifiers.contains(Modifier.staticModifier())
+        isAbstract = n.getModifiers.contains(Modifier.abstractModifier())
+        val name = n.asClassOrInterfaceDeclaration().getName
+        typeName = name.asString()
+      }
       super.visit(n, arg)
     }
 
     override def visit(n: ConstructorDeclaration, arg: RESULT): Unit = {
-      val params = ArrayBuffer.empty[ParameterTypeDesc]
-      n.getParameters.asScala.foreach { v =>
-        val pName = v.getName
-        val pType = v.getType
-        val notNull = pType.getAnnotations.asScala
-          .map(_.getName.asString().toLowerCase()).exists(v => v == "nonnull" || v == "notnull")
-        val typeDesc = parseType(pType, arg.typeDescMapper)
-        params.append(ParameterTypeDesc(pName.asString(), typeDesc, notNull))
+      arg.logger.debug(s"counter = ${counter}, ${n}")
+      counter += 1
+      if (constructorDesc == None) {
+        val params = ArrayBuffer.empty[ParameterTypeDesc]
+        n.getParameters.asScala.foreach { v =>
+          val pName = v.getName
+          val pType = v.getType
+          val notNull = pType.getAnnotations.asScala
+            .map(_.getName.asString().toLowerCase()).exists(v => v == "nonnull" || v == "notnull")
+          val typeDesc = parseType(arg, pType)
+          params.append(ParameterTypeDesc(pName.asString(), typeDesc, notNull))
+        }
+        constructorDesc = Some(ConstructorDesc(params.result.toVector))
       }
-      constructorDesc = ConstructorDesc(params.result.toVector)
       super.visit(n, arg)
     }
 
     override def visit(n: MethodDeclaration, arg: RESULT): Unit = {
-      if (n.getModifiers.contains(Modifier.publicModifier())) {
+      arg.logger.debug(s"counter = ${counter}, ${n}")
+      counter += 1
+
+      val currentTypeName = n.getParentNode.get.accept(new ClassVisitor(), arg)
+      // arg.logger.debug(s"currentTypeName = ${currentTypeName}, $typeName, counter = $counter")
+
+      if (currentTypeName == typeName && !n.getModifiers.contains(Modifier.privateModifier()) && !n.getModifiers
+            .contains(
+              Modifier.protectedModifier()
+            )) {
         val obj        = n.asMethodDeclaration()
+        val isStatic   = obj.isStatic
         val isThrows   = obj.getThrownExceptions.isNonEmpty
         val methodName = obj.getName.asString()
         val params     = ArrayBuffer.empty[ParameterTypeDesc]
@@ -404,19 +600,20 @@ trait WrapperGenerator {
           val pType = v.getType
           val notNull = pType.getAnnotations.asScala
             .map(_.getName.asString().toLowerCase()).exists(v => v == "nonnull" || v == "notnull")
-          val typeDesc = parseType(pType, arg.typeDescMapper)
+          val typeDesc = parseType(arg, pType)
           params.append(ParameterTypeDesc(pName.asString(), typeDesc, notNull))
         }
-        val returnTypeName = parseType(obj.getType, arg.typeDescMapper)
+        val returnTypeName = parseType(arg, obj.getType)
         val notNull =
           obj.getAnnotations.asScala
             .map(_.getName.asString().toLowerCase()).exists(v => v == "nonnull" || v == "notnull")
         methodDescs.append(
-          MethodDesc(methodName, params.result.toVector, returnTypeName, notNull, isThrows)
+          MethodDesc(methodName, params.result.toVector, returnTypeName, notNull, isThrows, isStatic)
         )
       }
       super.visit(n, arg)
     }
+
   }
 
 }
