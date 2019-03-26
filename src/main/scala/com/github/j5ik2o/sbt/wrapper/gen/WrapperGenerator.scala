@@ -2,6 +2,7 @@ package com.github.j5ik2o.sbt.wrapper.gen
 
 import java.io.FileWriter
 import java.nio.file.{ Files, Path }
+import java.util.concurrent.atomic.AtomicBoolean
 
 import com.github.j5ik2o.sbt.wrapper.gen.model._
 import com.github.j5ik2o.sbt.wrapper.gen.util.Loan._
@@ -26,7 +27,7 @@ object WrapperGenerator {
   type TypeDescMapper        = (String, Seq[TypeDesc], Option[String]) => TypeDesc
   type TemplateNameMapper    = TypeDesc => String
   type OutputDirectoryMapper = TypeDesc => File
-  type TypeNameMapper        = TypeDesc => String
+  type TypeNameMapper        = TypeDesc => Seq[String]
   type PackageNameMapper     = String => String
 
   val defaultTypeDescMapper: TypeDescMapper = {
@@ -263,8 +264,15 @@ trait WrapperGenerator {
     implicit val logger = context.logger
     logger.debug(s"generateFiles($cfg, $typeDesc): start")
     val outputTargetDirectory = context.outputDirectoryMapper(typeDesc)
-    val className             = context.typeNameMapper(typeDesc)
-    val result                = generateFile(context, cfg, typeDesc, className, outputTargetDirectory).map(Seq(_))
+    val typeNames             = context.typeNameMapper(typeDesc)
+    val result =
+      typeNames.foldLeft(Try(Seq.empty[File])) {
+        case (result, typeName) =>
+          for {
+            r <- result
+            e <- generateFile(context, cfg, typeDesc, typeName, outputTargetDirectory)
+          } yield r :+ e
+      }
     logger.debug(s"generateFiles: finished = $result")
     result
   }
@@ -272,27 +280,27 @@ trait WrapperGenerator {
   private[gen] def generateFile(context: GeneratorContext,
                                 cfg: freemarker.template.Configuration,
                                 typeDesc: TypeDesc,
-                                className: String,
+                                typeName: String,
                                 outputDirectory: File): Try[File] = {
     implicit val logger = context.logger
-    logger.debug(s"generateFile($cfg, $typeDesc, $className, $outputDirectory): start")
+    logger.debug(s"generateFile($cfg, $typeDesc, $typeName, $outputDirectory): start")
     val templateName = context.templateNameMapper(typeDesc)
     val template     = cfg.getTemplate(templateName)
 
     val ou = outputDirectory / typeDesc.packageName
       .map(context.packageNameMapper).map(v => v.replace(".", "/")).getOrElse("")
     context.logger.debug(s"ou = $ou")
-    val file = createFile(ou, className)
+    val file = createFile(ou, typeName)
     context.logger.debug(
-      s"classDesc = $typeDesc, className = $className, templateName = $templateName, generate file = $file"
+      s"classDesc = $typeDesc, className = $typeName, templateName = $templateName, generate file = $file"
     )
 
     if (!ou.exists())
       IO.createDirectory(ou)
 
     val result = using(new FileWriter(file)) { writer =>
-      logger.debug("typeDesc.asMap = " + typeDesc.asMap)
-      template.process(typeDesc.asScalaDesc.asMap, writer)
+      logger.debug("typeDesc.asMap = " + typeDesc.asJavaMap)
+      template.process(typeDesc.asScalaDesc.asJavaMap, writer)
       writer.flush()
       Success(file)
     }
@@ -441,6 +449,14 @@ trait WrapperGenerator {
     }
   }
 
+  class EnumVisitor(exist: AtomicBoolean) extends VoidVisitorAdapter[RESULT] {
+
+    override def visit(n: EnumDeclaration, arg: RESULT): Unit = {
+      exist.set(true)
+      super.visit(n, arg)
+    }
+  }
+
   class Visitor extends VoidVisitorAdapter[RESULT] {
 
     private val methodDescs                              = ArrayBuffer.empty[MethodDesc]
@@ -449,7 +465,7 @@ trait WrapperGenerator {
     private var packageName: Option[String]              = None
     private var constructorDesc: Option[ConstructorDesc] = None
     private var enum: Boolean                            = false
-    private var entries: Map[String, String]             = Map.empty
+    private var entries: Map[String, Seq[String]]        = Map.empty
     private var isStatic: Boolean                        = false
     private var isAbstract: Boolean                      = false
 
@@ -502,7 +518,7 @@ trait WrapperGenerator {
         enum = true
         typeName = n.getName.getIdentifier
         entries = n.getEntries.asScala.map { e =>
-          (e.getName.asString(), e.getArguments.get(0).toString)
+          (e.getName.asString(), e.getArguments.asScala.map(_.toString))
         }.toMap
       }
       super.visit(n, arg)

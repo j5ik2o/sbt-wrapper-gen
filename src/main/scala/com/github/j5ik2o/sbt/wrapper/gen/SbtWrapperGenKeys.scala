@@ -14,7 +14,7 @@ trait SbtWrapperGenKeys {
   val templateNameMapper          = settingKey[TypeDesc => String]("template name mapper")
   val inputSourceDirectory        = settingKey[File]("input source directory")
   val outputSourceDirectoryMapper = settingKey[TypeDesc => File]("output source directory")
-  val typeNameMapper              = settingKey[TypeDesc => String]("type name mapper")
+  val typeNameMapper              = settingKey[TypeDesc => Seq[String]]("type name mapper")
   val packageNameMapper           = settingKey[String => String]("package name mapper")
   val javaParserConfiguration     = settingKey[Option[ParserConfiguration]]("java parser configuration")
 

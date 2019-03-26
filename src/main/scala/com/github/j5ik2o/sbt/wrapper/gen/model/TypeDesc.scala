@@ -5,256 +5,310 @@ import java.util
 
 import scala.collection.JavaConverters._
 
-sealed trait Ast {
-  type T <: Ast
-  def asString: String
-  def asMap: util.Map[String, AnyRef]
-  def asScalaDesc: T
-}
+sealed trait TypeDesc {
+  type ThisScalaType <: TypeDesc
 
-sealed trait TypeDesc extends Ast {
-  override type T = TypeDesc
   def simpleTypeName: String
-  def fullTypeName: String
-  def packageName: Option[String]
+
+  def asString: String = fullTypeName
+
+  def asJavaMap: util.Map[String, AnyRef] =
+    asScalaMap.asJava
+
+  def asScalaMap: Map[String, AnyRef] =
+    Map[String, AnyRef](
+      "object"         -> isObject.asInstanceOf[java.lang.Boolean],
+      "enum"           -> isEnum.asInstanceOf[java.lang.Boolean],
+      "typeLevelCount" -> typeLevelCount.asInstanceOf[java.lang.Integer],
+      "simpleTypeName" -> simpleTypeName,
+      "fullTypeName"   -> fullTypeName,
+      "hasPackageName" -> packageName.nonEmpty.asInstanceOf[java.lang.Boolean]
+    ) ++ (if (packageName.nonEmpty) Map("packageName" -> packageName.get) else Map.empty)
+
+  def typeLevelCount: Int = 1
+
+  def isEnum: Boolean = false
+
+  def isObject: Boolean = true
+
+  def packageName: Option[String] = None
+
+  def fullTypeName: String = simpleTypeName
+
+  def asScalaDesc: ThisScalaType = this.asInstanceOf[ThisScalaType]
+
+  protected def bottomValueTypeDesc(valueTypeDesc: TypeDesc): TypeDesc = {
+    def loop(v: TypeDesc): TypeDesc = v match {
+      case MapTypeDesc(_, n)     => loop(n)
+      case SeqTypeDesc(n)        => loop(n)
+      case ArrayTypeDesc(n)      => loop(n)
+      case JavaListTypeDesc(n)   => loop(n)
+      case JavaMapTypeDesc(_, n) => loop(n)
+      case a                     => a
+    }
+
+    loop(valueTypeDesc)
+  }
 }
 
 case class PrimitiveTypeDesc(primitiveType: PrimitiveType) extends TypeDesc {
-  override def packageName: Option[String] = None
-  override def simpleTypeName: String      = primitiveType.entryName
-  override def fullTypeName: String        = simpleTypeName
-  override def asString: String            = simpleTypeName
-  override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName, "fullTypeName" -> fullTypeName).asJava
-  override def asScalaDesc: PrimitiveTypeDesc = this
+  override lazy val simpleTypeName: String = primitiveType.entryName
 }
 
 case class UnitTypeDesc() extends TypeDesc {
-  override def packageName: Option[String] = Some("scala")
-  override def simpleTypeName: String      = "Unit"
-  override def fullTypeName: String        = simpleTypeName
-  override def asString: String            = fullTypeName
-  override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName, "fullTypeName" -> fullTypeName).asJava
-  override def asScalaDesc: UnitTypeDesc = this
+  override lazy val packageName: Option[String] = Some("scala")
+  override lazy val simpleTypeName: String      = "Unit"
 }
 
 case class VoidTypeDesc() extends TypeDesc {
-  override def packageName: Option[String] = None
-  override def simpleTypeName: String      = "void"
-  override def fullTypeName: String        = simpleTypeName
-  override def asString: String            = simpleTypeName
-  override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName, "fullTypeName" -> fullTypeName).asJava
-  override def asScalaDesc: UnitTypeDesc = UnitTypeDesc()
+  override type ThisScalaType = UnitTypeDesc
+  override lazy val isObject: Boolean           = false
+  override lazy val packageName: Option[String] = None
+  override lazy val simpleTypeName: String      = "void"
+  override lazy val asScalaDesc: UnitTypeDesc   = UnitTypeDesc()
 }
 
 case class StringTypeDesc() extends TypeDesc {
-  override def packageName: Option[String] = Some("java.lang")
-  override def simpleTypeName: String      = "String"
-  override def fullTypeName: String        = simpleTypeName
-  override def asString: String            = simpleTypeName
-  override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName, "fullTypeName" -> fullTypeName).asJava
-  override def asScalaDesc: StringTypeDesc = this
+  override lazy val packageName: Option[String] = Some("java.lang")
+  override lazy val simpleTypeName: String      = "String"
 }
 
-case class MapTypeDesc(keyTypeName: TypeDesc, valueTypeName: TypeDesc) extends TypeDesc {
-  override def packageName: Option[String] = Some("scala.collection")
-  override def simpleTypeName: String      = "Map"
-  override def fullTypeName: String        = s"Map[${keyTypeName.asString}, ${valueTypeName.asString}]"
-  override def asString: String =
-    s"Map[${keyTypeName.asString}, ${valueTypeName.asString}]"
-  override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef](
-      "simpleTypeName" -> simpleTypeName,
-      "keyTypeName"    -> keyTypeName.simpleTypeName,
-      "valueTypeName"  -> valueTypeName.simpleTypeName,
-      "fullTypeName"   -> fullTypeName
-    ).asJava
-  override def asScalaDesc: MapTypeDesc = this
+case class ArrayTypeDesc(valueTypeDesc: TypeDesc) extends TypeDesc {
+  override type ThisScalaType = ArrayTypeDesc
+  override lazy val typeLevelCount: Int         = 1 + valueTypeDesc.typeLevelCount
+  override lazy val packageName: Option[String] = Some("scala")
+  override lazy val simpleTypeName: String      = "Array"
+  override lazy val fullTypeName: String        = s"Array[${valueTypeDesc.asString}]"
+  override lazy val asScalaMap: Map[String, AnyRef] = super.asScalaMap ++ Map[String, AnyRef](
+    "valueTypeDesc"       -> valueTypeDesc.asJavaMap,
+    "bottomValueTypeDesc" -> bottomValueTypeDesc(valueTypeDesc).asJavaMap
+  )
+  override lazy val asScalaDesc: ArrayTypeDesc = copy(valueTypeDesc = valueTypeDesc.asScalaDesc)
+
 }
 
-case class JavaMapTypeDesc(keyTypeName: TypeDesc, valueTypeName: TypeDesc) extends TypeDesc {
-  override def packageName: Option[String] = Some("java.util")
-  override def simpleTypeName: String      = "Map"
-  override def fullTypeName: String        = s"Map[${keyTypeName.asString}, ${valueTypeName.asString}]"
-  override def asString: String =
-    s"Map[${keyTypeName.asString}, ${valueTypeName.asString}]"
-  override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef](
-      "simpleTypeName" -> simpleTypeName,
-      "keyTypeName"    -> keyTypeName.simpleTypeName,
-      "valueTypeName"  -> valueTypeName.simpleTypeName,
-      "fullTypeName"   -> fullTypeName
-    ).asJava
-  override def asScalaDesc: MapTypeDesc = MapTypeDesc(keyTypeName.asScalaDesc, valueTypeName.asScalaDesc)
+case class SeqTypeDesc(valueTypeDesc: TypeDesc) extends TypeDesc {
+  override lazy val typeLevelCount: Int         = 1 + valueTypeDesc.typeLevelCount
+  override lazy val packageName: Option[String] = Some("scala.collection")
+  override lazy val simpleTypeName: String      = "Seq"
+  override lazy val fullTypeName: String        = s"Seq[${valueTypeDesc.asString}]"
+  override lazy val asScalaMap: Map[String, AnyRef] = super.asScalaMap ++ Map[String, AnyRef](
+    "valueTypeDesc"       -> valueTypeDesc.asJavaMap,
+    "bottomValueTypeDesc" -> bottomValueTypeDesc(valueTypeDesc).asJavaMap
+  )
+
+}
+
+case class JavaListTypeDesc(valueTypeDesc: TypeDesc) extends TypeDesc {
+  override type ThisScalaType = SeqTypeDesc
+  override lazy val typeLevelCount: Int         = 1 + valueTypeDesc.typeLevelCount
+  override lazy val packageName: Option[String] = Some("java.util")
+  override lazy val simpleTypeName: String      = "List"
+  override lazy val fullTypeName: String        = s"List[${valueTypeDesc.asString}]"
+  override lazy val asScalaMap: Map[String, AnyRef] = super.asScalaMap ++ Map[String, AnyRef](
+    "valueTypeDesc"       -> valueTypeDesc.asJavaMap,
+    "bottomValueTypeDesc" -> bottomValueTypeDesc(valueTypeDesc).asJavaMap
+  )
+  override lazy val asScalaDesc: SeqTypeDesc = SeqTypeDesc(valueTypeDesc.asScalaDesc)
+
+}
+
+case class MapTypeDesc(keyTypeDesc: TypeDesc, valueTypeDesc: TypeDesc) extends TypeDesc {
+  override lazy val typeLevelCount: Int         = 1 + valueTypeDesc.typeLevelCount
+  override lazy val packageName: Option[String] = Some("scala.collection")
+  override lazy val simpleTypeName: String      = "Map"
+  override lazy val fullTypeName: String        = s"Map[${keyTypeDesc.asString}, ${valueTypeDesc.asString}]"
+  override lazy val asScalaMap: Map[String, AnyRef] = super.asScalaMap ++ Map[String, AnyRef](
+    "keyTypeDesc"         -> keyTypeDesc.asJavaMap,
+    "valueTypeDesc"       -> valueTypeDesc.asJavaMap,
+    "bottomValueTypeDesc" -> bottomValueTypeDesc(valueTypeDesc).asJavaMap
+  )
+}
+
+case class JavaMapTypeDesc(keyTypeDesc: TypeDesc, valueTypeDesc: TypeDesc) extends TypeDesc {
+  override type ThisScalaType = MapTypeDesc
+  override lazy val typeLevelCount: Int         = 1 + valueTypeDesc.typeLevelCount
+  override lazy val packageName: Option[String] = Some("java.util")
+  override lazy val simpleTypeName: String      = "Map"
+  override lazy val fullTypeName: String        = s"Map[${keyTypeDesc.asString}, ${valueTypeDesc.asString}]"
+  override lazy val asScalaMap: Map[String, AnyRef] = super.asScalaMap ++ Map[String, AnyRef](
+    "keyTypeDesc"         -> keyTypeDesc.asJavaMap,
+    "valueTypeDesc"       -> valueTypeDesc.asJavaMap,
+    "bottomValueTypeDesc" -> bottomValueTypeDesc(valueTypeDesc).asJavaMap
+  )
+  override lazy val asScalaDesc: MapTypeDesc = MapTypeDesc(keyTypeDesc.asScalaDesc, valueTypeDesc.asScalaDesc)
+
 }
 
 case class WildcardTypeDesc(typeName: String) extends TypeDesc {
-  override def packageName: Option[String]     = None
-  override def simpleTypeName: String          = typeName
-  override def fullTypeName: String            = simpleTypeName
-  override def asString: String                = simpleTypeName
-  override def asMap: util.Map[String, AnyRef] = Map[String, AnyRef]("wildcard" -> simpleTypeName).asJava
-  override def asScalaDesc: WildcardTypeDesc   = this
+  override lazy val typeLevelCount: Int                 = 1
+  override lazy val packageName: Option[String]         = None
+  override lazy val fullTypeName: String                = simpleTypeName
+  override lazy val asString: String                    = simpleTypeName
+  override lazy val asJavaMap: util.Map[String, AnyRef] = Map[String, AnyRef]("wildcard" -> simpleTypeName).asJava
+  override lazy val simpleTypeName: String              = typeName
 }
 
-case class OtherTypeDesc(typeName: String, typeParameters: Seq[TypeDesc], packageName: Option[String])
+case class OtherTypeDesc(typeName: String, typeParameterDescs: Seq[TypeDesc], override val packageName: Option[String])
     extends TypeDesc {
-  override def simpleTypeName: String = typeName
-  override def fullTypeName: String =
-    simpleTypeName + (if (typeParameters.nonEmpty) typeParameters.map(_.simpleTypeName).mkString("[", ",", "]") else "")
-  override def asString: String = fullTypeName
-  override def asMap: util.Map[String, AnyRef] =
-    (Map[String, AnyRef](
-      "simpleTypeName"    -> simpleTypeName,
-      "fullTypeName"      -> fullTypeName,
-      "hasTypeParameters" -> false.asInstanceOf[java.lang.Boolean]
-    ) ++ (if (typeParameters.nonEmpty)
-            Map(
-              "hasTypeParameters" -> true.asInstanceOf[java.lang.Boolean],
-              "typeParameter"     -> typeParameters.map(_.asMap).head,
-              "typeParameters"    -> typeParameters.map(_.asMap).asJava
-            )
-          else Map.empty)).asJava
-  override def asScalaDesc: OtherTypeDesc =
-    copy(typeParameters = typeParameters.map(_.asScalaDesc))
+  override type ThisScalaType = OtherTypeDesc
+  override lazy val typeLevelCount: Int = 1 + typeParameterDescs.map(_.typeLevelCount).sum
+  override lazy val fullTypeName: String =
+  simpleTypeName + (if (typeParameterDescs.nonEmpty) typeParameterDescs.map(_.simpleTypeName).mkString("[", ",", "]")
+                    else "")
+  override lazy val simpleTypeName: String = typeName
+  override lazy val asScalaMap: Map[String, AnyRef] =
+  super.asScalaMap ++ Map[String, AnyRef](
+    "hasTypeParameters" -> typeParameterDescs.nonEmpty.asInstanceOf[java.lang.Boolean]
+  ) ++ (if (typeParameterDescs.nonEmpty)
+          Map(
+            "hasTypeParameters"  -> true.asInstanceOf[java.lang.Boolean],
+            "typeParameterDesc"  -> typeParameterDescs.map(_.asJavaMap).head,
+            "typeParameterDescs" -> typeParameterDescs.map(_.asJavaMap).asJava
+          )
+        else Map.empty)
+
+  override lazy val asScalaDesc: OtherTypeDesc =
+    copy(typeParameterDescs = typeParameterDescs.map(_.asScalaDesc))
 }
 
-case class CompletableFutureDesc(valueTypeName: TypeDesc) extends TypeDesc {
-  override def packageName: Option[String] = Some("java.util.concurrent")
-  override def simpleTypeName: String      = s"CompletableFuture"
-  override def fullTypeName: String        = s"CompletableFuture[${valueTypeName.asString}]"
-  override def asString: String            = fullTypeName
-  override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName,
-                        "fullTypeName"   -> fullTypeName,
-                        "valueTypeName"  -> valueTypeName.simpleTypeName).asJava
-  def asScalaDesc: ScalaFutureDesc = ScalaFutureDesc(valueTypeName.asScalaDesc)
+case class JavaFutureDesc(valueTypeDesc: TypeDesc) extends TypeDesc {
+  override type ThisScalaType = ScalaFutureDesc
+  override lazy val typeLevelCount: Int         = 1 + valueTypeDesc.typeLevelCount
+  override lazy val packageName: Option[String] = Some("java.util.concurrent")
+  override lazy val simpleTypeName: String      = s"Future"
+  override lazy val fullTypeName: String        = s"Future[${valueTypeDesc.asString}]"
+  override lazy val asScalaMap: Map[String, AnyRef] =
+  super.asScalaMap ++ Map[String, AnyRef](
+    "valueTypeDesc"       -> valueTypeDesc.asJavaMap,
+    "bottomValueTypeDesc" -> bottomValueTypeDesc(valueTypeDesc).asJavaMap
+  )
+  override lazy val asScalaDesc: ScalaFutureDesc = ScalaFutureDesc(valueTypeDesc.asScalaDesc)
+
 }
 
-case class ScalaFutureDesc(valueTypeName: TypeDesc) extends TypeDesc {
-  override def packageName: Option[String] = Some("scala.concurrent")
-  override def simpleTypeName: String      = s"Future"
-  override def fullTypeName: String        = s"Future[${valueTypeName.asString}]"
-  override def asString: String            = fullTypeName
-  override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName,
-                        "fullTypeName"   -> fullTypeName,
-                        "valueTypeName"  -> valueTypeName.simpleTypeName).asJava
-  override def asScalaDesc: ScalaFutureDesc = this
+case class CompletableFutureDesc(valueTypeDesc: TypeDesc) extends TypeDesc {
+  override type ThisScalaType = ScalaFutureDesc
+  override lazy val typeLevelCount: Int         = 1 + valueTypeDesc.typeLevelCount
+  override lazy val packageName: Option[String] = Some("java.util.concurrent")
+  override lazy val simpleTypeName: String      = s"CompletableFuture"
+  override lazy val fullTypeName: String        = s"CompletableFuture[${valueTypeDesc.asString}]"
+  override lazy val asScalaMap: Map[String, AnyRef] =
+  super.asScalaMap ++ Map[String, AnyRef](
+    "valueTypeDesc"       -> valueTypeDesc.asJavaMap,
+    "bottomValueTypeDesc" -> bottomValueTypeDesc(valueTypeDesc).asJavaMap
+  )
+  override lazy val asScalaDesc: ScalaFutureDesc = ScalaFutureDesc(valueTypeDesc.asScalaDesc)
+
 }
 
-case class SeqTypeDesc(valueTypeName: TypeDesc) extends TypeDesc {
-  override def packageName: Option[String] = Some("scala.collection")
-  override def simpleTypeName: String      = "Seq"
-  override def fullTypeName: String        = s"Seq[${valueTypeName.asString}]"
-  override def asString: String            = fullTypeName
-  override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName,
-                        "fullTypeName"   -> fullTypeName,
-                        "valueTypeName"  -> valueTypeName.simpleTypeName).asJava
-  override def asScalaDesc: SeqTypeDesc = this
+case class ScalaFutureDesc(valueTypeDesc: TypeDesc) extends TypeDesc {
+  override lazy val typeLevelCount: Int         = 1 + valueTypeDesc.typeLevelCount
+  override lazy val packageName: Option[String] = Some("scala.concurrent")
+  override lazy val simpleTypeName: String      = s"Future"
+  override lazy val fullTypeName: String        = s"Future[${valueTypeDesc.asString}]"
+  override lazy val asScalaMap: Map[String, AnyRef] =
+  super.asScalaMap ++ Map[String, AnyRef](
+    "valueTypeDesc"       -> valueTypeDesc.asJavaMap,
+    "bottomValueTypeDesc" -> bottomValueTypeDesc(valueTypeDesc).asJavaMap,
+  )
+
 }
 
-case class JavaListTypeDesc(valueTypeName: TypeDesc) extends TypeDesc {
-  override def packageName: Option[String] = Some("java.util")
-  override def simpleTypeName: String      = "List"
-  override def fullTypeName: String        = s"List[${valueTypeName.asString}]"
-  override def asString: String            = fullTypeName
-  override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName,
-                        "fullTypeName"   -> fullTypeName,
-                        "valueTypeName"  -> valueTypeName.simpleTypeName).asJava
-  override def asScalaDesc = SeqTypeDesc(valueTypeName.asScalaDesc)
+case class ParameterTypeDesc(name: String, parameterTypeDesc: TypeDesc, notNull: Boolean) extends TypeDesc {
+  override type ThisScalaType = ParameterTypeDesc
+  override lazy val typeLevelCount: Int         = 0 + parameterTypeDesc.typeLevelCount
+  override lazy val packageName: Option[String] = None
+  override lazy val simpleTypeName: String      = parameterTypeDesc.simpleTypeName
+  override lazy val fullTypeName: String        = parameterTypeDesc.fullTypeName
+  override lazy val asString: String            = s"$name: ${parameterTypeDesc.asString}"
+  override lazy val asScalaMap: Map[String, AnyRef] =
+  super.asScalaMap ++ Map[String, AnyRef](
+    "name"                    -> name,
+    "parameterTypeDesc"       -> parameterTypeDesc.asJavaMap,
+    "bottomParameterTypeDesc" -> bottomValueTypeDesc(parameterTypeDesc),
+    "notNull"                 -> notNull.asInstanceOf[java.lang.Boolean]
+  )
+  override lazy val asScalaDesc: ParameterTypeDesc = copy(parameterTypeDesc = parameterTypeDesc.asScalaDesc)
+
 }
 
-case class ArrayTypeDesc(valueTypeName: TypeDesc) extends TypeDesc {
-  override def packageName: Option[String] = Some("scala")
-  override def simpleTypeName: String      = "Array"
-  override def fullTypeName: String        = s"Array[${valueTypeName.asString}]"
-  override def asString: String            = fullTypeName
-  override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef]("simpleTypeName" -> simpleTypeName,
-                        "fullTypeName"   -> fullTypeName,
-                        "valueTypeName"  -> valueTypeName.simpleTypeName).asJava
-  override def asScalaDesc: ArrayTypeDesc = copy(valueTypeName = valueTypeName.asScalaDesc)
-}
-
-case class ParameterTypeDesc(name: String, typeName: TypeDesc, notNull: Boolean) extends TypeDesc {
-  override def packageName: Option[String] = None
-  override def simpleTypeName: String      = typeName.simpleTypeName
-  override def fullTypeName: String        = typeName.fullTypeName
-  override def asString: String            = s"$name: ${typeName.asString}"
-  override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef]("name"     -> name,
-                        "typeName" -> typeName.asMap,
-                        "notNull"  -> notNull.asInstanceOf[java.lang.Boolean]).asJava
-  override def asScalaDesc: ParameterTypeDesc = copy(typeName = typeName.asScalaDesc)
-}
-
-case class ConstructorDesc(parameters: Seq[ParameterTypeDesc]) extends TypeDesc {
-  override def packageName: Option[String] = None
-  override def simpleTypeName: String      = "Constructor"
-  override def fullTypeName: String        = simpleTypeName
-  override def asString: String =
-    "(" + parameters.map(_.asString).mkString(",") + ")"
-  override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef]("parameters" -> parameters.map(_.asMap).asJava).asJava
-  override def asScalaDesc: ConstructorDesc = copy(parameters = parameters.map(_.asScalaDesc))
+case class ConstructorDesc(parameterTypeDescs: Seq[ParameterTypeDesc]) extends TypeDesc {
+  override type ThisScalaType = ConstructorDesc
+  override lazy val typeLevelCount: Int         = 0 + parameterTypeDescs.map(_.typeLevelCount).sum
+  override lazy val packageName: Option[String] = None
+  override lazy val fullTypeName: String        = simpleTypeName
+  override lazy val simpleTypeName: String      = "Constructor"
+  override lazy val asString: String =
+  "(" + parameterTypeDescs.map(_.asString).mkString(",") + ")"
+  override lazy val asScalaMap: Map[String, AnyRef] =
+  super.asScalaMap ++ Map[String, AnyRef](
+    "parameterTypeDescs" -> parameterTypeDescs.map(_.asJavaMap).asJava
+  )
+  override lazy val asScalaDesc: ConstructorDesc = copy(parameterTypeDescs = parameterTypeDescs.map(_.asScalaDesc))
 }
 
 case class MethodDesc(name: String,
-                      parameters: Seq[ParameterTypeDesc],
-                      returnType: TypeDesc,
+                      parameterTypeDescs: Seq[ParameterTypeDesc],
+                      returnTypeDesc: TypeDesc,
                       notNull: Boolean,
                       throws: Boolean,
                       static: Boolean)
     extends TypeDesc {
-  override def packageName: Option[String] = None
-  override def simpleTypeName: String      = "Method"
-  override def fullTypeName: String        = simpleTypeName
-  override def asString: String =
-    s"def $name(${parameters.map(_.asString).mkString(",")}): ${returnType.asString}"
-  override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef](
-      "name"       -> name,
-      "parameters" -> parameters.map(_.asMap).asJava,
-      "returnType" -> returnType.asMap,
-      "notNull"    -> notNull.asInstanceOf[java.lang.Boolean],
-      "static"     -> static.asInstanceOf[java.lang.Boolean]
-    ).asJava
-  override def asScalaDesc: MethodDesc =
-    copy(parameters = parameters.map(_.asScalaDesc), returnType = returnType.asScalaDesc)
+  override type ThisScalaType = MethodDesc
+  override lazy val typeLevelCount: Int         = 0 + parameterTypeDescs.map(_.typeLevelCount).sum
+  override lazy val packageName: Option[String] = None
+  override lazy val fullTypeName: String        = simpleTypeName
+  override lazy val simpleTypeName: String      = "Method"
+  override lazy val asString: String =
+    s"lazy val $name(${parameterTypeDescs.map(_.asString).mkString(",")}): ${returnTypeDesc.asString}"
+
+  override lazy val asScalaMap: Map[String, AnyRef] =
+  super.asScalaMap ++ Map[String, AnyRef](
+    "name"                    -> name,
+    "parameterTypeDescs"      -> parameterTypeDescs.map(_.asJavaMap).asJava,
+    "bottomParameterTypeDesc" -> parameterTypeDescs.map(v => bottomValueTypeDesc(v).asJavaMap).asJava,
+    "returnTypeDesc"          -> returnTypeDesc.asJavaMap,
+    "bottomReturnTypeDesc"    -> bottomValueTypeDesc(returnTypeDesc),
+    "notNull"                 -> notNull.asInstanceOf[java.lang.Boolean],
+    "throws"                  -> throws.asInstanceOf[java.lang.Boolean],
+    "static"                  -> static.asInstanceOf[java.lang.Boolean]
+  )
+
+  override lazy val asScalaDesc: MethodDesc =
+    copy(parameterTypeDescs = parameterTypeDescs.map(_.asScalaDesc), returnTypeDesc = returnTypeDesc.asScalaDesc)
 }
 
-case class FieldDesc(name: String, fieldType: TypeDesc, notNull: Boolean, static: Boolean) extends TypeDesc {
-  override def packageName: Option[String] = None
-  override def simpleTypeName: String      = "Field"
-  override def fullTypeName: String        = simpleTypeName
-  override def asString: String            = s"field $name, $fieldType"
-  override def asMap: util.Map[String, AnyRef] =
-    Map[String, AnyRef](
-      "name"      -> name,
-      "fieldType" -> fieldType.asMap,
-      "notNull"   -> notNull.asInstanceOf[java.lang.Boolean],
-      "static"    -> static.asInstanceOf[java.lang.Boolean]
-    ).asJava
-  override def asScalaDesc: FieldDesc = copy(fieldType = fieldType.asScalaDesc)
+case class FieldDesc(name: String, fieldTypeDesc: TypeDesc, notNull: Boolean, static: Boolean) extends TypeDesc {
+  override type ThisScalaType = FieldDesc
+  override lazy val typeLevelCount: Int         = 0 + fieldTypeDesc.typeLevelCount
+  override lazy val packageName: Option[String] = None
+  override lazy val fullTypeName: String        = simpleTypeName
+  override lazy val simpleTypeName: String      = "Field"
+  override lazy val asString: String            = s"field $name, $fieldTypeDesc"
+  override lazy val asScalaMap: Map[String, AnyRef] =
+  super.asScalaMap ++ Map[String, AnyRef](
+    "name"                -> name,
+    "fieldTypeDesc"       -> fieldTypeDesc.asJavaMap,
+    "bottomFieldTypeDesc" -> bottomValueTypeDesc(fieldTypeDesc).asJavaMap,
+    "notNull"             -> notNull.asInstanceOf[java.lang.Boolean],
+    "static"              -> static.asInstanceOf[java.lang.Boolean]
+  )
+  override lazy val asScalaDesc: FieldDesc = copy(fieldTypeDesc = fieldTypeDesc.asScalaDesc)
 }
 
-case class EnumDesc(simpleTypeName: String, entries: Map[String, String], packageName: Option[String])
+case class EnumDesc(simpleTypeName: String, entries: Map[String, Seq[String]], override val packageName: Option[String])
     extends TypeDesc {
-  override def fullTypeName: String = simpleTypeName
-  override def asString: String     = s"enum $simpleTypeName { $entries }"
-  override def asMap: util.Map[String, AnyRef] =
-    (Map[String, AnyRef]("isEnum"         -> true.asInstanceOf[java.lang.Boolean],
-                         "simpleTypeName" -> simpleTypeName,
-                         "fullTypeName"   -> fullTypeName,
-                         "entries"        -> entries.asJava) ++
-    (if (packageName.nonEmpty) Map("packageName" -> packageName.get) else Map.empty)).asJava
-  override def asScalaDesc: EnumDesc = this
+  override type ThisScalaType = EnumDesc
+  override lazy val isEnum: Boolean      = true
+  override lazy val typeLevelCount: Int  = 1
+  override lazy val fullTypeName: String = simpleTypeName
+  override lazy val asString: String     = s"enum $simpleTypeName { $entries }"
+  override lazy val asScalaMap: Map[String, AnyRef] =
+  super.asScalaMap ++ Map[String, AnyRef](
+    "entries" -> entries.mapValues(_.asJava).asJava
+  )
+  override lazy val asScalaDesc: EnumDesc = this
 }
 
 case class ClassDesc(simpleTypeName: String,
@@ -264,26 +318,24 @@ case class ClassDesc(simpleTypeName: String,
                      path: Path,
                      isAbstract: Boolean,
                      isStatic: Boolean,
-                     packageName: Option[String] = None)
+                     override val packageName: Option[String] = None)
     extends TypeDesc {
-  override def fullTypeName: String = simpleTypeName
-  override def asString: String = {
+  override type ThisScalaType = ClassDesc
+  override lazy val typeLevelCount: Int  = 1
+  override lazy val fullTypeName: String = simpleTypeName
+  override lazy val asString: String = {
     s"class ${simpleTypeName}${constructor.map(_.asString).getOrElse("")} {" +
     methods.map(_.asString).mkString("\n\n  ", "\n\n  ", "\n\n") +
     "}"
   }
-  override def asMap: util.Map[String, AnyRef] =
-    (Map[String, AnyRef](
-      "isClass"        -> true.asInstanceOf[java.lang.Boolean],
-      "simpleTypeName" -> simpleTypeName,
-      "fullTypeName"   -> fullTypeName,
-      "abstract"       -> isAbstract.asInstanceOf[java.lang.Boolean],
-      "static"         -> isStatic.asInstanceOf[java.lang.Boolean],
-      "methods"        -> methods.map(_.asMap).asJava,
-      "fields"         -> fields.map(_.asMap).asJava
-    ) ++
-    (if (packageName.nonEmpty) Map("packageName" -> packageName.get) else Map.empty)).asJava
-  override def asScalaDesc: ClassDesc =
+  override lazy val asScalaMap: Map[String, AnyRef] =
+  super.asScalaMap ++ Map[String, AnyRef](
+    "abstract" -> isAbstract.asInstanceOf[java.lang.Boolean],
+    "static"   -> isStatic.asInstanceOf[java.lang.Boolean],
+    "methods"  -> methods.map(_.asJavaMap).asJava,
+    "fields"   -> fields.map(_.asJavaMap).asJava
+  )
+  override lazy val asScalaDesc: ClassDesc =
     copy(
       constructor = constructor.map(_.asScalaDesc),
       methods = methods.map(_.asScalaDesc),
