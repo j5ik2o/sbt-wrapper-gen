@@ -17,6 +17,7 @@ sealed trait TypeDesc {
 
   def asScalaMap: Map[String, AnyRef] =
     Map[String, AnyRef](
+      "asString"       -> asString,
       "object"         -> isObject.asInstanceOf[java.lang.Boolean],
       "enum"           -> isEnum.asInstanceOf[java.lang.Boolean],
       "typeLevelCount" -> typeLevelCount.asInstanceOf[java.lang.Integer],
@@ -264,7 +265,7 @@ case class MethodDesc(name: String,
   override lazy val fullTypeName: String        = simpleTypeName
   override lazy val simpleTypeName: String      = "Method"
   override lazy val asString: String =
-    s"lazy val $name(${parameterTypeDescs.map(_.asString).mkString(",")}): ${returnTypeDesc.asString}"
+    s"def $name(${parameterTypeDescs.map(_.asString).mkString(",")}): ${returnTypeDesc.asString}"
 
   lazy val isGetter: Boolean        = name.startsWith("get")
   lazy val isSetter: Boolean        = name.startsWith("set")
@@ -327,6 +328,7 @@ case class ClassDesc(simpleTypeName: String,
                      fields: Seq[FieldDesc],
                      isAbstract: Boolean,
                      isStatic: Boolean,
+                     classJavadocText: Option[String],
                      path: Path,
                      override val packageName: Option[String] = None)
     extends TypeDesc {
@@ -344,7 +346,8 @@ case class ClassDesc(simpleTypeName: String,
     "static"   -> isStatic.asInstanceOf[java.lang.Boolean],
     "methods"  -> methods.map(_.asJavaMap).asJava,
     "fields"   -> fields.map(_.asJavaMap).asJava,
-    "path"     -> path.toString
+    "path"     -> path.toString,
+    "javadoc"  -> classJavadocText
   )
   override lazy val asScalaDesc: ClassDesc =
     copy(

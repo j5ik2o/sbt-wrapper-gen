@@ -9,6 +9,7 @@ import com.github.j5ik2o.sbt.wrapper.gen.util.Loan._
 import com.github.javaparser.ast.Modifier.Keyword
 import com.github.javaparser.ast.`type`.Type
 import com.github.javaparser.ast.body._
+import com.github.javaparser.ast.comments.JavadocComment
 import com.github.javaparser.ast.visitor.{ GenericVisitorAdapter, VoidVisitorAdapter }
 import com.github.javaparser.ast.{ Modifier, PackageDeclaration }
 import com.github.javaparser.{ JavaParser, ParserConfiguration }
@@ -25,7 +26,7 @@ import scala.util.{ Success, Try }
 object WrapperGenerator {
   type TypeFilter            = TypeDesc => Boolean
   type TypeDescMapper        = (String, Seq[TypeDesc]) => TypeDesc
-  type TemplateNameMapper    = TypeDesc => String
+  type TemplateNameMapper    = (String, TypeDesc) => String
   type OutputDirectoryMapper = TypeDesc => File
   type TypeNameMapper        = TypeDesc => Seq[String]
   type PackageNameMapper     = String => String
@@ -349,7 +350,7 @@ trait WrapperGenerator {
                                 outputDirectory: File): Try[File] = {
     implicit val logger = context.logger
     logger.debug(s"generateFile($cfg, $typeDesc, $typeName, $outputDirectory): start")
-    val templateName = context.templateNameMapper(typeDesc)
+    val templateName = context.templateNameMapper(typeName, typeDesc)
     val template     = cfg.getTemplate(templateName)
 
     val ou = outputDirectory / typeDesc.packageName
@@ -481,6 +482,7 @@ trait WrapperGenerator {
     private var entries: Map[String, Seq[String]]        = Map.empty
     private var isStatic: Boolean                        = false
     private var isAbstract: Boolean                      = false
+    private var classJavadocText: Option[String]         = None
 
     private var counter = 0L
 
@@ -495,6 +497,7 @@ trait WrapperGenerator {
                   fieldDescs.result.toVector,
                   isAbstract,
                   isStatic,
+                  classJavadocText,
                   path,
                   packageName)
       }
@@ -576,6 +579,11 @@ trait WrapperGenerator {
         }
         constructorDesc = Some(ConstructorDesc(params.result.toVector))
       }
+      super.visit(n, arg)
+    }
+
+    override def visit(n: JavadocComment, arg: RESULT): Unit = {
+      classJavadocText = Some(n.parse().getDescription.toText)
       super.visit(n, arg)
     }
 
