@@ -26,7 +26,7 @@ object SbtWrapperGenPlugin extends AutoPlugin with WrapperGenerator {
     typeNameMapper in scalaWrapperGen := { cd =>
       Seq(cd.simpleTypeName)
     },
-    packageNameMapper in scalaWrapperGen := { identity },
+    packageNameMapper in scalaWrapperGen := { case (s, _, _) => s },
     javaParserConfiguration in scalaWrapperGen := None,
     typeDescFilter in scalaWrapperGen := { _ =>
       true

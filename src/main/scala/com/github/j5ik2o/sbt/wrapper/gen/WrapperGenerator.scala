@@ -29,7 +29,7 @@ object WrapperGenerator {
   type TemplateNameMapper    = (String, TypeDesc) => String
   type OutputDirectoryMapper = TypeDesc => File
   type TypeNameMapper        = TypeDesc => Seq[String]
-  type PackageNameMapper     = String => String
+  type PackageNameMapper     = (String, String, TypeDesc) => String
 
   val defaultTypeDescMapper: TypeDescMapper = {
     case ("int", _) =>
@@ -354,7 +354,7 @@ trait WrapperGenerator {
     val template     = cfg.getTemplate(templateName)
 
     val ou = outputDirectory / typeDesc.packageName
-      .map(context.packageNameMapper).map(v => v.replace(".", "/")).getOrElse("")
+      .map(p => context.packageNameMapper(p, typeName, typeDesc)).map(_.replace(".", "/")).getOrElse("")
     context.logger.debug(s"ou = $ou")
     val file = createFile(ou, typeName)
     context.logger.debug(

@@ -1,12 +1,8 @@
 package com.github.j5ik2o.sbt.wrapper.gen
 
-import java.nio.file.Paths
-
 import com.github.j5ik2o.sbt.wrapper.gen.model._
 import org.scalatest.{ FreeSpec, Matchers }
 import sbt.internal.util.ConsoleLogger
-
-import scala.util.Success
 
 class WrapperGeneratorSpec extends FreeSpec with Matchers with WrapperGenerator {
   implicit val consoleLogger = ConsoleLogger()
@@ -26,9 +22,9 @@ class WrapperGeneratorSpec extends FreeSpec with Matchers with WrapperGenerator 
         typeNameMapper = { v =>
           Seq(v.simpleTypeName)
         },
-        packageNameMapper = { v =>
-          require(v != null)
-          v
+        packageNameMapper = {
+          case (v, _, _) =>
+            v
         },
         parserConfigurationOpt = None
       )
