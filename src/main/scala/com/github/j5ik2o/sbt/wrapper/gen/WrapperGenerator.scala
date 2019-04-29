@@ -9,9 +9,11 @@ import com.github.j5ik2o.sbt.wrapper.gen.util.Loan._
 import com.github.javaparser.ast.Modifier.Keyword
 import com.github.javaparser.ast.`type`.Type
 import com.github.javaparser.ast.body._
+import com.github.javaparser.ast.comments.JavadocComment
 import com.github.javaparser.ast.visitor.{ GenericVisitorAdapter, VoidVisitorAdapter }
 import com.github.javaparser.ast.{ Modifier, PackageDeclaration }
 import com.github.javaparser.{ JavaParser, ParserConfiguration }
+import freemarker.cache.{ FileTemplateLoader, MultiTemplateLoader, TemplateLoader }
 import sbt.Keys._
 import sbt.complete.Parser
 import sbt.{ Def, File, _ }
@@ -25,10 +27,10 @@ import scala.util.{ Success, Try }
 object WrapperGenerator {
   type TypeFilter            = TypeDesc => Boolean
   type TypeDescMapper        = (String, Seq[TypeDesc]) => TypeDesc
-  type TemplateNameMapper    = TypeDesc => String
+  type TemplateNameMapper    = (String, TypeDesc) => String
   type OutputDirectoryMapper = TypeDesc => File
   type TypeNameMapper        = TypeDesc => Seq[String]
-  type PackageNameMapper     = String => String
+  type PackageNameMapper     = (String, String, TypeDesc) => String
 
   val defaultTypeDescMapper: TypeDescMapper = {
     case ("int", _) =>
@@ -162,7 +164,7 @@ trait WrapperGenerator {
 
     val typeFilterValue            = (typeDescFilter in scalaWrapperGen).value
     val typeDescMapperValue        = (typeDescMapper in scalaWrapperGen).value
-    val templateDirectoryValue     = (templateDirectory in scalaWrapperGen).value
+    val templateDirectoryValue     = (templateDirectories in scalaWrapperGen).value
     val templateNameMapperValue    = (templateNameMapper in scalaWrapperGen).value
     val inputDirectoryValue        = (inputSourceDirectory in scalaWrapperGen).value
     val outputDirectoryMapperValue = (outputSourceDirectoryMapper in scalaWrapperGen).value
@@ -174,7 +176,7 @@ trait WrapperGenerator {
       logger = streams.value.log,
       typeFilter = typeFilterValue,
       typeDescMapper = typeDescMapperValue,
-      templateDirectory = templateDirectoryValue,
+      templateDirectories = templateDirectoryValue,
       templateNameMapper = templateNameMapperValue,
       inputDirectory = inputDirectoryValue,
       outputDirectoryMapper = outputDirectoryMapperValue,
@@ -189,7 +191,7 @@ trait WrapperGenerator {
     implicit val logger = context.logger
     logger.debug(s"generateOne: start")
     val result: Try[Seq[File]] = for {
-      cfg       <- createTemplateConfiguration(context.templateDirectory)
+      cfg       <- createTemplateConfiguration(context.templateDirectories)
       typeDescs <- getTypeDescs(context)(context.typeFilter)
       files <- typeDescs
         .find { v =>
@@ -211,7 +213,7 @@ trait WrapperGenerator {
 
     val typeFilterValue            = (typeDescFilter in scalaWrapperGen).value
     val typeDescMapperValue        = (typeDescMapper in scalaWrapperGen).value
-    val templateDirectoryValue     = (templateDirectory in scalaWrapperGen).value
+    val templateDirectoriesValue   = (templateDirectories in scalaWrapperGen).value
     val templateNameMapperValue    = (templateNameMapper in scalaWrapperGen).value
     val inputDirectoryValue        = (inputSourceDirectory in scalaWrapperGen).value
     val outputDirectoryMapperValue = (outputSourceDirectoryMapper in scalaWrapperGen).value
@@ -223,7 +225,7 @@ trait WrapperGenerator {
       logger = streams.value.log,
       typeFilter = typeFilterValue,
       typeDescMapper = typeDescMapperValue,
-      templateDirectory = templateDirectoryValue,
+      templateDirectories = templateDirectoriesValue,
       templateNameMapper = templateNameMapperValue,
       inputDirectory = inputDirectoryValue,
       outputDirectoryMapper = outputDirectoryMapperValue,
@@ -238,7 +240,7 @@ trait WrapperGenerator {
     implicit val logger = context.logger
     logger.debug(s"generateMany($classNames): start")
     val result = for {
-      cfg       <- createTemplateConfiguration(context.templateDirectory)
+      cfg       <- createTemplateConfiguration(context.templateDirectories)
       typeDescs <- getTypeDescs(context)(context.typeFilter)
       files <- typeDescs
         .filter { classDesc =>
@@ -308,15 +310,20 @@ trait WrapperGenerator {
   }
 
   private[gen] def createTemplateConfiguration(
-      templateDirectory: File
+      templateDirectories: Seq[File]
   )(implicit logger: Logger): Try[freemarker.template.Configuration] = Try {
-    logger.debug(s"createTemplateConfiguration($templateDirectory): start")
+    logger.debug(s"createTemplateConfiguration($templateDirectories): start")
     var cfg: freemarker.template.Configuration = null
     try {
       cfg = new freemarker.template.Configuration(
         freemarker.template.Configuration.DEFAULT_INCOMPATIBLE_IMPROVEMENTS
       )
-      cfg.setDirectoryForTemplateLoading(templateDirectory)
+      val loaders = templateDirectories
+        .map { f =>
+          new FileTemplateLoader(f)
+        }.toArray[TemplateLoader]
+      val templateLoader = new MultiTemplateLoader(loaders)
+      cfg.setTemplateLoader(templateLoader)
     } finally {
       logger.debug(s"createTemplateConfiguration: finished = $cfg")
     }
@@ -349,11 +356,11 @@ trait WrapperGenerator {
                                 outputDirectory: File): Try[File] = {
     implicit val logger = context.logger
     logger.debug(s"generateFile($cfg, $typeDesc, $typeName, $outputDirectory): start")
-    val templateName = context.templateNameMapper(typeDesc)
+    val templateName = context.templateNameMapper(typeName, typeDesc)
     val template     = cfg.getTemplate(templateName)
 
     val ou = outputDirectory / typeDesc.packageName
-      .map(context.packageNameMapper).map(v => v.replace(".", "/")).getOrElse("")
+      .map(p => context.packageNameMapper(p, typeName, typeDesc)).map(_.replace(".", "/")).getOrElse("")
     context.logger.debug(s"ou = $ou")
     val file = createFile(ou, typeName)
     context.logger.debug(
@@ -390,7 +397,7 @@ trait WrapperGenerator {
 
     val typeDescToBoolean          = (typeDescFilter in scalaWrapperGen).value
     val typeDescMapperValue        = (typeDescMapper in scalaWrapperGen).value
-    val templateDirectoryValue     = (templateDirectory in scalaWrapperGen).value
+    val templateDirectoriesValue   = (templateDirectories in scalaWrapperGen).value
     val templateNameMapperValue    = (templateNameMapper in scalaWrapperGen).value
     val inputDirectoryValue        = (inputSourceDirectory in scalaWrapperGen).value
     val outputDirectoryMapperValue = (outputSourceDirectoryMapper in scalaWrapperGen).value
@@ -402,7 +409,7 @@ trait WrapperGenerator {
       logger = streams.value.log,
       typeFilter = typeDescToBoolean,
       typeDescMapper = typeDescMapperValue,
-      templateDirectory = templateDirectoryValue,
+      templateDirectories = templateDirectoriesValue,
       templateNameMapper = templateNameMapperValue,
       inputDirectory = inputDirectoryValue,
       outputDirectoryMapper = outputDirectoryMapperValue,
@@ -417,7 +424,7 @@ trait WrapperGenerator {
     implicit val logger = context.logger
     logger.debug(s"generateAll: start")
     val result = for {
-      cfg       <- createTemplateConfiguration(context.templateDirectory)
+      cfg       <- createTemplateConfiguration(context.templateDirectories)
       typeDescs <- getTypeDescs(context)(context.typeFilter)
       files <- typeDescs
         .foldLeft(Try(Seq.empty[File])) { (result, classDesc) =>
@@ -434,7 +441,7 @@ trait WrapperGenerator {
   case class GeneratorContext(logger: Logger,
                               typeFilter: TypeFilter,
                               typeDescMapper: TypeDescMapper,
-                              templateDirectory: File,
+                              templateDirectories: Seq[File],
                               templateNameMapper: TemplateNameMapper,
                               inputDirectory: File,
                               outputDirectoryMapper: OutputDirectoryMapper,
@@ -481,6 +488,7 @@ trait WrapperGenerator {
     private var entries: Map[String, Seq[String]]        = Map.empty
     private var isStatic: Boolean                        = false
     private var isAbstract: Boolean                      = false
+    private var classJavadocText: Option[String]         = None
 
     private var counter = 0L
 
@@ -495,6 +503,7 @@ trait WrapperGenerator {
                   fieldDescs.result.toVector,
                   isAbstract,
                   isStatic,
+                  classJavadocText,
                   path,
                   packageName)
       }
@@ -576,6 +585,11 @@ trait WrapperGenerator {
         }
         constructorDesc = Some(ConstructorDesc(params.result.toVector))
       }
+      super.visit(n, arg)
+    }
+
+    override def visit(n: JavadocComment, arg: RESULT): Unit = {
+      classJavadocText = Some(n.parse().getDescription.toText)
       super.visit(n, arg)
     }
 

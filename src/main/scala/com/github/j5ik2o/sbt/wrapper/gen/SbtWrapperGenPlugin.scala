@@ -14,9 +14,10 @@ object SbtWrapperGenPlugin extends AutoPlugin with WrapperGenerator {
   import autoImport._
 
   override def projectSettings: Seq[Def.Setting[_]] = Seq(
-    templateDirectory in scalaWrapperGen := baseDirectory.value / "sbt-wrapper-gen",
-    templateNameMapper in scalaWrapperGen := { _ =>
-      "template.ftl"
+    templateDirectories in scalaWrapperGen := Seq(baseDirectory.value / "sbt-wrapper-gen"),
+    templateNameMapper in scalaWrapperGen := {
+      case (_, _) =>
+        "template.ftl"
     },
     inputSourceDirectory in scalaWrapperGen := baseDirectory.value / "sbt-wrapper-gen" / "java",
     outputSourceDirectoryMapper in scalaWrapperGen := { _ =>
@@ -25,7 +26,7 @@ object SbtWrapperGenPlugin extends AutoPlugin with WrapperGenerator {
     typeNameMapper in scalaWrapperGen := { cd =>
       Seq(cd.simpleTypeName)
     },
-    packageNameMapper in scalaWrapperGen := { identity },
+    packageNameMapper in scalaWrapperGen := { case (s, _, _) => s },
     javaParserConfiguration in scalaWrapperGen := None,
     typeDescFilter in scalaWrapperGen := { _ =>
       true

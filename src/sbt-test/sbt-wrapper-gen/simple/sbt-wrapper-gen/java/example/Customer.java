@@ -2,6 +2,9 @@ package example;
 
 import javax.annotation.Nonnull;
 
+/**
+ *
+ */
 public class Customer {
 
     private String firstName;
