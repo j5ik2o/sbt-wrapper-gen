@@ -14,7 +14,7 @@ object SbtWrapperGenPlugin extends AutoPlugin with WrapperGenerator {
   import autoImport._
 
   override def projectSettings: Seq[Def.Setting[_]] = Seq(
-    templateDirectory in scalaWrapperGen := baseDirectory.value / "sbt-wrapper-gen",
+    templateDirectories in scalaWrapperGen := Seq(baseDirectory.value / "sbt-wrapper-gen"),
     templateNameMapper in scalaWrapperGen := {
       case (_, _) =>
         "template.ftl"

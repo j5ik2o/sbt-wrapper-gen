@@ -15,7 +15,7 @@ class WrapperGeneratorSpec extends FreeSpec with Matchers with WrapperGenerator 
         logger = consoleLogger,
         typeFilter = _classFilter,
         typeDescMapper = WrapperGenerator.defaultTypeDescMapper,
-        templateDirectory = null,
+        templateDirectories = null,
         templateNameMapper = null,
         inputDirectory = sbt.file("src/test/java/example"),
         outputDirectoryMapper = null,

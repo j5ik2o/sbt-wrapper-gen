@@ -10,7 +10,7 @@ trait SbtWrapperGenKeys {
 
   val typeDescFilter              = settingKey[TypeDesc => Boolean]("class desc filter")
   val typeDescMapper              = settingKey[(String, Seq[TypeDesc]) => TypeDesc]("type desc mapper")
-  val templateDirectory           = settingKey[File]("template directory")
+  val templateDirectories         = settingKey[Seq[File]]("template directories")
   val templateNameMapper          = settingKey[(String, TypeDesc) => String]("template name mapper")
   val inputSourceDirectory        = settingKey[File]("input source directory")
   val outputSourceDirectoryMapper = settingKey[TypeDesc => File]("output source directory")
