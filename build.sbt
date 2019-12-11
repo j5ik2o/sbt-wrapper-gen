@@ -47,7 +47,7 @@ lazy val sbtSonatype = Project(
       "Seasar Repository" at "https://maven.seasar.org/maven2/"
     ),
     libraryDependencies ++= Seq(
-      "ch.qos.logback"           % "logback-classic"     % "1.1.3",
+      "ch.qos.logback"           % "logback-classic"     % "1.1.11",
       "org.slf4j"                % "slf4j-api"           % "1.7.12",
       "org.freemarker"           % "freemarker"          % "2.3.22",
       "org.seasar.util"          % "s2util"              % "0.0.1",
