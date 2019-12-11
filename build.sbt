@@ -43,23 +43,19 @@ lazy val sbtSonatype = Project(
     resolvers ++= Seq(
       "Sonatype OSS Snapshot Repository" at "https://oss.sonatype.org/content/repositories/snapshots/",
       "Sonatype OSS Release Repository" at "https://oss.sonatype.org/content/repositories/releases/",
-      "Typesafe Releases" at "http://repo.typesafe.com/typesafe/releases/",
-      "Seasar Repository" at "http://maven.seasar.org/maven2/"
+      "Typesafe Releases" at "https://repo.typesafe.com/typesafe/releases/",
+      "Seasar Repository" at "https://maven.seasar.org/maven2/"
     ),
     libraryDependencies ++= Seq(
-      "ch.qos.logback" % "logback-classic" % "1.1.3",
-      "org.slf4j" % "slf4j-api" % "1.7.12",
-      "org.freemarker" % "freemarker" % "2.3.22",
-      "org.seasar.util" % "s2util" % "0.0.1",
+      "ch.qos.logback"           % "logback-classic"     % "1.1.3",
+      "org.slf4j"                % "slf4j-api"           % "1.7.12",
+      "org.freemarker"           % "freemarker"          % "2.3.22",
+      "org.seasar.util"          % "s2util"              % "0.0.1",
       "com.github.javaparser"    % "javaparser-core"     % "3.13.1",
       "com.google.code.findbugs" % "jsr305"              % "3.0.2",
       "com.beachape"             %% "enumeratum"         % "1.5.13",
       "org.scala-lang.modules"   %% "scala-java8-compat" % "0.9.0",
-      "org.scalatest" %% "scalatest" % "3.0.1" % Test,
-      "com.h2database" % "h2" % "1.4.187" % Test
+      "org.scalatest"            %% "scalatest"          % "3.0.1" % Test,
+      "com.h2database"           % "h2"                  % "1.4.187" % Test
     )
   )
-
-
-
-

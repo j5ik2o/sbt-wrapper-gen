@@ -29,7 +29,7 @@ object WrapperGenerator {
   type TypeDescMapper        = (String, Seq[TypeDesc]) => TypeDesc
   type TemplateNameMapper    = (String, TypeDesc) => String
   type OutputDirectoryMapper = TypeDesc => File
-  type TypeNameMapper        = TypeDesc => Seq[String]
+  type TypeNameMapper        = TypeDesc => Seq[(String, String)]
   type PackageNameMapper     = (String, String, TypeDesc) => String
 
   val defaultTypeDescMapper: TypeDescMapper = {
@@ -335,14 +335,14 @@ trait WrapperGenerator {
                                  typeDesc: TypeDesc): Try[Seq[File]] = {
     implicit val logger = context.logger
     logger.debug(s"generateFiles($cfg, $typeDesc): start")
-    val outputTargetDirectory = context.outputDirectoryMapper(typeDesc)
-    val typeNames             = context.typeNameMapper(typeDesc)
+    val outputTargetDirectory  = context.outputDirectoryMapper(typeDesc)
+    val typeNameWithExtensions = context.typeNameMapper(typeDesc)
     val result =
-      typeNames.foldLeft(Try(Seq.empty[File])) {
-        case (result, typeName) =>
+      typeNameWithExtensions.foldLeft(Try(Seq.empty[File])) {
+        case (result, (typeName, extension)) =>
           for {
             r <- result
-            e <- generateFile(context, cfg, typeDesc, typeName, outputTargetDirectory)
+            e <- generateFile(context, cfg, typeDesc, typeName, extension, outputTargetDirectory)
           } yield r :+ e
       }
     logger.debug(s"generateFiles: finished = $result")
@@ -353,6 +353,7 @@ trait WrapperGenerator {
                                 cfg: freemarker.template.Configuration,
                                 typeDesc: TypeDesc,
                                 typeName: String,
+                                extension: String,
                                 outputDirectory: File): Try[File] = {
     implicit val logger = context.logger
     logger.debug(s"generateFile($cfg, $typeDesc, $typeName, $outputDirectory): start")
@@ -362,7 +363,7 @@ trait WrapperGenerator {
     val ou = outputDirectory / typeDesc.packageName
       .map(p => context.packageNameMapper(p, typeName, typeDesc)).map(_.replace(".", "/")).getOrElse("")
     context.logger.debug(s"ou = $ou")
-    val file = createFile(ou, typeName)
+    val file = createFile(ou, typeName, extension)
     context.logger.debug(
       s"classDesc = $typeDesc, className = $typeName, templateName = $templateName, generate file = $file"
     )
@@ -381,11 +382,11 @@ trait WrapperGenerator {
     result
   }
 
-  private[gen] def createFile(outputDirectory: File, className: String)(
+  private[gen] def createFile(outputDirectory: File, className: String, extension: String)(
       implicit logger: Logger
   ): File = {
     logger.debug(s"createFile($outputDirectory, $className): start")
-    val file = outputDirectory / (className + ".scala")
+    val file = outputDirectory / (className + extension)
 
     logger.debug(s"createFile: finished = $file")
     file

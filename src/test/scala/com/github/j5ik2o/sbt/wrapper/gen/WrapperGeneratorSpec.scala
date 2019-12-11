@@ -20,7 +20,7 @@ class WrapperGeneratorSpec extends FreeSpec with Matchers with WrapperGenerator 
         inputDirectory = sbt.file("src/test/java/example"),
         outputDirectoryMapper = null,
         typeNameMapper = { v =>
-          Seq(v.simpleTypeName)
+          Seq((v.simpleTypeName, ".scala"))
         },
         packageNameMapper = {
           case (v, _, _) =>
