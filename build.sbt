@@ -54,7 +54,7 @@ lazy val sbtSonatype = Project(
       "com.github.javaparser"    % "javaparser-core"     % "3.13.1",
       "com.google.code.findbugs" % "jsr305"              % "3.0.2",
       "com.beachape"             %% "enumeratum"         % "1.5.13",
-      "org.scala-lang.modules"   %% "scala-java8-compat" % "0.9.0",
+      "org.scala-lang.modules"   %% "scala-java8-compat" % "0.9.1",
       "org.scalatest"            %% "scalatest"          % "3.0.1" % Test,
       "com.h2database"           % "h2"                  % "1.4.187" % Test
     )
